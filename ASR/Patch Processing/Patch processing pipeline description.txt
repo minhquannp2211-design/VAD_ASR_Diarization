@@ -1,0 +1,4 @@
+Mô hình Transducer AED :
+Audio  ──► [ Conformer / Emformer ]  ──► h_t ┐
+                                                ├─► [ Joint Net (Pruned) ] ──► Softmax
+Text   ──► [ Embedding / Conv1D ]    ──► p_u ┘

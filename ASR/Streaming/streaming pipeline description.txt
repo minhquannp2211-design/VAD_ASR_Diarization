@@ -1,0 +1,17 @@
+Mô hình conformer CTC :
+[Raw Audio Waveform: 1D]
+         │
+         ▼
+[STFT (Biến đổi Fourier ngắn)] ────────► Chuyển miền thời gian sang tần số
+         │
+         ▼
+[Mel-Filterbank (Thường là 80 dims)] ──► Nén tần số theo cảm nhận tai người (Log-mel)
+         │
+         ▼
+[Convolution Subsampling] ─────────────► Giảm mẫu thời gian (thường giảm 4 lần: stride 2x2)
+         │
+         ▼
+[Conformer Encoder Blocks] ────────────► Học biểu diễn sâu (Attention + CNN)
+         │
+         ▼
+[Linear Projection + CTC Loss] ────────► Ánh xạ ra xác suất ký tự / Token
