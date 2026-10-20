@@ -1,4 +1,41 @@
-Mô hình Transducer AED :
+Mô hình Transducer-Transformer AED :
 Audio  ──► [ Conformer / Emformer ]  ──► h_t ┐
                                                 ├─► [ Joint Net (Pruned) ] ──► Softmax
 Text   ──► [ Embedding / Conv1D ]    ──► p_u ┘
+
+• Conformer (Convolution-augmented Transformer):
+Bản chất của Conformer chính là một mạng Transformer nâng cao.
+Người ta lấy cấu trúc Self-Attention của Transformer rồi chèn thêm một lớp Tích chập (Convolution) vào giữa.
+Lớp CNN giúp bắt các đặc trưng cục bộ ngắn hạn (như âm tiết),
+còn lớp Transformer giúp bắt ngữ cảnh dài hạn của cả file âm thanh.
+
+• Emformer (Embodied Transformer):
+ Đây cũng là một biến thể của Transformer được thiết kế riêng cho việc xử lý thời gian thực (Streaming).
+ Nó chia nhỏ đoạn âm thanh thành các block và áp dụng cơ chế Attention giới hạn
+ để mô hình không phải chờ toàn bộ file audio mà vẫn tính toán được.
+
+ Nhánh phía dưới: Text ──► [ Embedding / Conv1D ] ──► p_u.
+• Khối này nhận đầu vào là các chữ/ký tự đã xuất ra trước đó để dự đoán từ tiếp theo
+ (giống như một mô hình ngôn ngữ - Language Model).
+
+• Trong các kiến trúc Transformer-Transducer (T-T) hiện đại,
+ người ta thường thay thế hoặc bọc ngoài khối Embedding/Conv1D này bằng một mạng Transformer Decoder
+ (hoặc GPT-like causal Transformer).
+ Lúc này, p_u sẽ mang thông tin ngữ cảnh ngữ pháp cực kỳ mạnh mẽ nhờ cơ chế Self-Attention của văn bản.
+
+
+• Transducer mạnh về dịch thời gian thực (Streaming), chạy rất nhanh.
+• AED (Transformer Encoder-Decoder) mạnh về độ chính xác tổng thể khi đã có toàn bộ file âm thanh (Non-streaming).
+Lúc này, người ta sẽ ghép một cấu trúc Transformer Decoder độc lập vào sau khối Audio Encoder:
+Audio ──► [ Conformer / Emformer ] ──► h_t ┬──► [ Joint Net (Pruned) ] ──► Đầu ra Transducer (Real-time)
+                                           │
+                                           └──► [ Transformer Decoder ] ──► Đầu ra AED (Lọc lại cho chính xác)
+Hãy thận trọng khi sử dụng mã.
+Trong quá trình huấn luyện (Training),
+khối Transformer Decoder này sẽ được cắm vào để tính toán thêm một hàm mất mát nữa (AED Loss),
+ép cho khối Encoder (h_t) trích xuất ra đặc trưng tốt hơn.
+Khi mang đi chạy thực tế (Inference) trên điện thoại,
+người ta có thể tháo bỏ khối Transformer Decoder này ra để hệ thống nhẹ và chạy mượt theo thời gian thực qua nhánh Transducer.
+
+Sơ đồ bạn đưa ra có nhắc đến Joint Net (Pruned)
+— một kỹ thuật tối ưu bộ nhớ cực kỳ nâng cao của các thư viện như k2 / icefall (Next-gen Kaldi).
