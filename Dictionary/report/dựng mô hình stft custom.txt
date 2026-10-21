@@ -1,0 +1,5 @@
+Yêu cầu về STFT trong các mô hình:
+1/ ASR 
+offline : đòi hỏi spectrogram căn centered và đệm đối xứng để các khung thời gian khớp chính xác với nhãn thực tế
+streaming : không được phép đệm dữ liệu tương lai ( vì không có data, xử lí theo thời gian thực ), chỉ được nhìn về quá khứ và hiện tại
+2/ Diarization 

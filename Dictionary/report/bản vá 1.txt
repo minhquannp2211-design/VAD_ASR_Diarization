@@ -1,0 +1,131 @@
+=====================================================================
+  BÁO CÁO SỬA LỖI — Dictionary/STFT.py
+  Ngày: 2026-10-21
+=====================================================================
+
+Tổng số vấn đề tìm thấy: 7
+Tổng số đã sửa:          7
+Tổng số gợi ý thêm:      1 (không sửa code, chỉ thêm chú thích)
+
+---------------------------------------------------------------------
+  LỖI 1 — KẾT QUẢ TÍNH TOÁN SAI ÂM THẦM  [ĐÃ SỬA]
+---------------------------------------------------------------------
+Bị lỗi ở đâu?
+  Phần tính Power Spectrum (Re² + Im²)
+
+Chuyện gì xảy ra?
+  Code cũ dùng một vùng nhớ chung để vừa đọc vừa ghi cùng lúc.
+  Hình dung đơn giản: bạn đang đọc một tờ giấy và đồng thời
+  tẩy xóa nó — tờ giấy sẽ bị hỏng trước khi bạn đọc xong.
+  Kết quả: Power Spectrum ra số sai mà không báo lỗi, model
+  VAD / ASR / Diarization nhận dữ liệu sai → dự đoán sai.
+
+Sửa thế nào?
+  Tạo thêm 1 buffer nhỏ riêng cho Im² thay vì dùng chung vùng nhớ.
+  Chi phí bộ nhớ tăng rất nhỏ, đổi lại kết quả luôn đúng 100%.
+
+---------------------------------------------------------------------
+  LỖI 2 — CRASH KHI TRUYỀN THAM SỐ SAI  [ĐÃ SỬA]
+---------------------------------------------------------------------
+Bị lỗi ở đâu?
+  Hàm tạo window (cửa sổ âm thanh)
+
+Chuyện gì xảy ra?
+  Nếu ai đó truyền kích thước cửa sổ lớn hơn n_fft (ví dụ nhầm
+  tham số), code cũ không báo lỗi ngay mà tiếp tục chạy rồi
+  crash ở bước sau với thông báo khó hiểu.
+
+Sửa thế nào?
+  Thêm kiểm tra ngay từ đầu. Nếu tham số sai → báo lỗi rõ ràng
+  ngay lập tức với thông báo dễ đọc, không để lỗi lan ra xa.
+
+---------------------------------------------------------------------
+  LỖI 3 — THAM SỐ DỄ MẤT ĐỒNG BỘ (Diarization)  [ĐÃ SỬA]
+---------------------------------------------------------------------
+Bị lỗi ở đâu?
+  Hàm stft_for_diarization
+
+Chuyện gì xảy ra?
+  n_fft và win_length bị hardcode riêng lẻ. Nếu sau này đổi n_fft
+  mà quên đổi win_length → cửa sổ âm thanh bị tính sai, ảnh hưởng
+  chất lượng nhận diện giọng nói (Diarization).
+
+Sửa thế nào?
+  n_fft giờ là tham số truyền vào (mặc định 512). win_length tự
+  động được tính dựa trên n_fft — không bao giờ mất đồng bộ nữa.
+
+---------------------------------------------------------------------
+  LỖI 4 — NGUY CƠ DỮ LIỆU BỊ LẪN KHI DÙNG ĐA LUỒNG  [ĐÃ SỬA]
+---------------------------------------------------------------------
+Bị lỗi ở đâu?
+  Class StreamingSTFT (xử lý streaming VAD / ASR)
+
+Chuyện gì xảy ra?
+  Bộ đệm (_buffer) lưu tạm âm thanh chưa xử lý. Nếu 2 luồng
+  (thread) cùng gọi process_chunk() một lúc, cả hai cùng đọc và
+  ghi _buffer → âm thanh bị trộn lẫn, kết quả loạn.
+  Giống như 2 người cùng viết vào 1 tờ giấy không có thứ tự.
+
+Sửa thế nào?
+  Thêm "khóa" (threading.Lock). Khi 1 luồng đang xử lý buffer,
+  luồng kia phải đợi — đảm bảo thứ tự và không bao giờ bị lẫn.
+
+---------------------------------------------------------------------
+  LỖI 5 — THAM SỐ SAI CHỈ BỊ PHÁT HIỆN KHI ĐÃ CHẠY MỘT LÚC  [ĐÃ SỬA]
+---------------------------------------------------------------------
+Bị lỗi ở đâu?
+  StreamingSTFT.__init__ — tham số output_type
+
+Chuyện gì xảy ra?
+  Nếu truyền output_type bị viết sai chính tả (vd: "magntude"),
+  code cũ không báo lỗi ngay mà chỉ báo sau khi đã stream một
+  lúc → khó debug vì không biết lỗi xuất hiện từ lúc nào.
+
+Sửa thế nào?
+  Kiểm tra ngay trong __init__. Tạo object với tham số sai → lỗi
+  ngay lập tức, không phải đợi đến lúc chạy mới biết.
+
+---------------------------------------------------------------------
+  LỖI 6 — VAD BỊ TÍNH SAI KHI DÙNG SAMPLE RATE KHÁC 16000  [ĐÃ SỬA]
+---------------------------------------------------------------------
+Bị lỗi ở đâu?
+  Hàm create_vad_streamer và create_asr_streamer
+
+Chuyện gì xảy ra?
+  n_fft bị hardcode = 256. Nếu dùng sample_rate khác 16000 (ví dụ
+  8kHz cho điện thoại cũ), win_length tính ra < 256 → cửa sổ âm
+  thanh bị pad thêm số 0 sai cách → VAD model nhận dữ liệu khác
+  với lúc training → độ chính xác giảm.
+
+Sửa thế nào?
+  n_fft giờ tự động tính = lũy thừa 2 nhỏ nhất >= win_length.
+  win_length luôn <= n_fft dù sample_rate là bất kỳ giá trị nào.
+
+---------------------------------------------------------------------
+  GỢI Ý THÊM — CẢNH BÁO workers=-1 (không sửa code, thêm chú thích)
+---------------------------------------------------------------------
+Vấn đề gì?
+  workers=-1 nghĩa là dùng toàn bộ nhân CPU. Nếu chạy nhiều
+  request cùng lúc (serving), mỗi request đều dùng hết CPU →
+  chúng tranh nhau → tất cả đều chậm lại.
+
+Đã làm gì?
+  Thêm chú thích cảnh báo trong docstring của stft_for_asr_patch
+  và stft_for_diarization để người dùng biết cách điều chỉnh khi
+  chạy trong môi trường serving đa tiến trình.
+
+=====================================================================
+  TÓM TẮT NHANH
+=====================================================================
+
+  Lỗi nguy hiểm nhất (kết quả sai mà không crash):  ĐÃ SỬA ✓
+  Lỗi crash khó debug:                               ĐÃ SỬA ✓
+  Lỗi khi đổi sample_rate (VAD/ASR):                ĐÃ SỬA ✓
+  Nguy cơ đa luồng (StreamingSTFT):                 ĐÃ SỬA ✓
+  Tham số sai phát hiện muộn:                        ĐÃ SỬA ✓
+  Diarization dễ mất đồng bộ tham số:               ĐÃ SỬA ✓
+  Cảnh báo workers=-1 trong serving:                ĐÃ GHI CHÚ ✓
+
+  File đã sửa: C:\Desktop\VAD_ASR_Diarization\Dictionary\STFT.py
+
+=====================================================================
