@@ -167,7 +167,7 @@ def _core_stft_optimized(
         return spec.T
 
     else:  # output_type == "complex"
-        return Z.T.astype(np.complex64)
+        return Z.T
 
 
 # ============================================================================
@@ -259,7 +259,7 @@ class StreamingSTFT:
             if len(x) < self.n_fft:
                 # Chưa đủ một frame — lưu toàn bộ vào buffer.
                 # Dùng copy() để buffer không phụ thuộc vào mảng x hoặc chunk.
-                self._buffer = x.copy()
+                self._buffer = x
                 return _empty_spec(self.n_fft, self.output_type)
 
             # Tính số lượng frame hoàn chỉnh có thể cắt được
