@@ -1,0 +1,68 @@
+VAD/state_machine.py - TRA CỨU NHANH CÁC LỚP VÀ HÀM CHÍNH (TẦNG 4)
+
+1. CẤU TRÚC DỮ LIỆU & ENUM
+
+VADState (IntEnum)
+- SILENCE  = 0 : Trạng thái im lặng / nhiễu nền.
+- ONSET    = 1 : Đang tích lũy các frame liên tiếp có score >= onset_thresh để xác nhận tiếng nói.
+- SPEECH   = 2 : Trạng thái tiếng nói đang hoạt động.
+- HANGOVER = 3 : Trạng thái duy trì sau khi score tụt xuống dưới offset_thresh.
+
+StateMachineConfig (dataclass, frozen=True)
+- Chức năng: Cấu hình các ngưỡng hysteresis và thời lượng (ms) cho máy trạng thái và hậu xử lý.
+- Các trường chính (giá trị mặc định là BASELINE khởi điểm, chưa tối ưu hóa trên dữ liệu có nhãn):
+  - onset_thresh: float = 0.55     (ngưỡng kích hoạt ONSET / SPEECH)
+  - offset_thresh: float = 0.35    (ngưỡng duy trì SPEECH / thoát HANGOVER; 0 < offset_thresh <= onset_thresh < 1)
+  - onset_ms: float = 30.0         (thời gian xác nhận ONSET liên tiếp; 30 ms = 6 frame @ hop 5 ms)
+  - hangover_ms: float = 150.0     (thời gian duy trì HANGOVER; 150 ms = 30 frame @ hop 5 ms)
+  - min_speech_ms: float = 100.0   (thời lượng bằng chứng tiếng nói tối thiểu không tính phần đệm hangover; 100 ms = 20 frame @ hop 5 ms)
+  - min_silence_ms: float = 100.0  (khoảng lặng ngắn tối đa giữa 2 đoạn ứng viên được nối liền; 100 ms = 20 frame @ hop 5 ms)
+- Phương thức:
+  - validate(): Kiểm tra tính hợp lệ của toàn bộ tham số.
+  - to_frames(hop_seconds): Quy đổi các tham số ms sang số frame nguyên dựa trên hop_seconds.
+
+StateMachineOutput (dataclass, frozen=True)
+- Chức năng: Đóng gói kết quả xử lý của một chunk T frame.
+- Các trường:
+  - segments: List[Tuple[float, float]]
+    Danh sách các đoạn tiếng nói `(start_time, end_time)` (tính bằng giây) đã chốt xong trong chunk hiện tại.
+    Quy ước mốc thời gian: `start_time = start_frame * hop_seconds` (inclusive), `end_time = end_frame * hop_seconds` (exclusive), nên thời lượng đoạn phát ra = `end_time - start_time = (end_frame - start_frame) * hop_seconds`.
+  - states: np.ndarray, shape (T,), dtype int8
+    Mã trạng thái VADState (0, 1, 2, 3) tại từng frame.
+  - speech_mask: np.ndarray, shape (T,), dtype bool
+    Mặt nạ tức thời (`True` tại các frame có `state` thuộc `{SPEECH, HANGOVER}`).
+- Thuộc tính:
+  - num_frames: trả về số frame T của chunk.
+
+2. LỚP VADStateMachine
+
+VADStateMachine(hop_seconds=0.005, config=None, debug=False)
+- Chức năng: Khởi tạo máy trạng thái VAD stateful xuyên qua các chunk streaming.
+
+process_chunk(sig_out: SigmoidOutput) -> StateMachineOutput
+- Đầu vào: Đối tượng SigmoidOutput từ Tầng 3 (sử dụng `sig_out.score` và `sig_out.warmup`).
+- Đầu ra: StateMachineOutput.
+
+process_scores(score: np.ndarray, warmup: Optional[np.ndarray] = None) -> StateMachineOutput
+- Chức năng: Xử lý trực tiếp mảng `score` (T,) và `warmup` (T,) để kiểm thử độc lập Tầng 4.
+
+flush() -> List[Tuple[float, float]]
+- Chức năng: Chốt đoạn tiếng nói còn đang mở (`SPEECH` / `HANGOVER`) hoặc đang chờ nối khoảng lặng (`_pending_seg`) khi kết thúc luồng âm thanh, kiểm tra điều kiện `speech_evidence_frames >= min_speech_frames` và trả về danh sách các đoạn cuối cùng.
+
+reset() -> None
+- Chức năng: Xóa toàn bộ trạng thái nội bộ (`state = SILENCE`, `frame_index = 0`, các bộ đếm và bộ đệm đoạn) để bắt đầu phiên âm thanh mới.
+
+3. QUY ƯỚC BIÊN HANGOVER, MIN_SPEECH_MS, CHÍNH SÁCH NON-FINITE & GIỚI HẠN WARM-UP
+
+- Quy ước chính xác biên Hangover (`hangover_frames = H`, với frame đầu tiên dưới `offset_thresh` tại chỉ số `g0`):
+  - Nếu `H = 0`: chuyển ngay về `SILENCE` tại frame `g0`; đoạn đóng tại `end_frame = g0` (0 frame `HANGOVER`).
+  - Nếu `H >= 1`: giữ trạng thái `HANGOVER` tại đúng `H` frame liên tiếp `g0, g0 + 1, ..., g0 + H - 1` (nếu điểm vẫn `< offset_thresh`). Nếu điểm vượt lại `>= offset_thresh` tại bất kỳ frame nào trong `g0 .. g0 + H - 1` (kể cả tại frame cuối `g0 + H - 1`), đoạn đang mở được khôi phục trực tiếp về `SPEECH`. Nếu cả `H` frame đều `< offset_thresh`, thì ngay khi kết thúc frame `g0 + H - 1`, hangover hết hạn: đoạn ứng viên đóng tại `end_frame = g0 + H` (exclusive) và trạng thái nội bộ chuyển về `SILENCE`. Nhờ đó, frame `g0 + H` luôn được xử lý như một frame mới từ `SILENCE` (nếu điểm cao tại `g0 + H` thì phải bắt đầu `ONSET` mới chứ không thể hồi sinh trực tiếp đoạn cũ).
+- Ngữ nghĩa `min_speech_ms` (`min_speech_frames`):
+  - Đo số lượng frame có bằng chứng tiếng nói thực sự (`speech_evidence_frames` = các frame `ONSET` đã xác nhận + các frame ở trạng thái `SPEECH`), độc lập với phần đuôi đệm `HANGOVER`.
+  - Giúp loại bỏ triệt để các xung ngắn chỉ vừa đủ lọt qua `onset_ms` (ví dụ 30 ms) rồi tắt ngay, không để `hangover_ms` (150 ms) cộng dồn làm vượt ngưỡng `min_speech_ms` (100 ms). Khi đã đủ `min_speech_frames`, đoạn phát ra vẫn giữ nguyên biên thời gian đầy đủ `(start_frame * hop_seconds, end_frame * hop_seconds)`.
+- Chính sách xử lý điểm không hữu hạn (`NaN`, `+Inf`, `-Inf`):
+  - Khi `debug=True`: lập tức ném `ValueError`.
+  - Khi `debug=False`: mọi frame có điểm không hữu hạn (`not np.isfinite(p)`) đều được ép về `p = 0.0` (không để `+Inf` kích hoạt nhầm `ONSET`/`SPEECH`, và không để `NaN`/`+Inf` giữ kẹt trạng thái `SPEECH`).
+- Giới hạn khởi động do hợp đồng Warm-up (Startup Limitation):
+  - Trong `init_frames` frame đầu (40 frame = 200 ms ở Tầng 2), `warmup[t] == True` giữ máy trạng thái ở `SILENCE` và `onset_count = 0`. Nếu điểm số sau warm-up vẫn cao, phát hiện bị trễ 200 ms (`start_time = 0.200 s`).
+  - Trong pipeline End-to-End (Tầng 1 -> 2 -> 3 -> 4), nếu câu nói có công suất ổn định bắt đầu ngay từ `t = 0.0 s` phủ kín 40 frame warm-up đầu, `NoiseEstimator` khởi tạo `noise_floor` bằng median công suất của chính câu nói đó -> sau frame 40, `snr_db` chỉ quanh `~0 dB` và `score < onset_thresh`, khiến câu nói đầu tiên bị bỏ sót (missed) cho đến khi có khoảng lặng để `noise_floor` hạ xuống mức nền nhiễu thật.

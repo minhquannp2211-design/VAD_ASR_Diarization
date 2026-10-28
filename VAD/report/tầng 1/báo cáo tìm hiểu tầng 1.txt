@@ -1,0 +1,47 @@
+1. Giai đoạn Khởi tạo (Initialization)
+
+Mục tiêu: Tính toán sẵn các cấu hình toán học để tối ưu tốc độ khi streaming.
+
+Hoạt động:
+
+Xác định tần số của từng bin FFT (bin_frequencies).
+
+Kiểm tra tính hợp lệ của các dải tần (_validate_freq_range).
+
+Tạo sẵn ma trận trọng số (masks) cho 4 dải tần (80-300Hz, 300-1000Hz, 1-2kHz, 2-4kHz) và mặt nạ cho vùng tính SFM (build_band_masks).
+
+Khởi tạo bộ xử lý STFT dạng streaming (create_vad_streamer).
+
+2. Giai đoạn Nhận dữ liệu (Streaming Input)
+
+Mục tiêu: Xử lý âm thanh liên tục theo thời gian thực (real-time).
+
+Hoạt động: Luồng dữ liệu (audio chunk) liên tục được đẩy vào hệ thống thông qua hàm process_chunk(audio).
+
+3. Giai đoạn Chuyển đổi miền (Time-to-Frequency Domain)
+
+Mục tiêu: Biến tín hiệu waveform thành biểu diễn tần số.
+
+Hoạt động: Bộ StreamingSTFT tích lũy đủ mẫu âm thanh (samples) để tạo thành các frame (ví dụ: mỗi frame cách nhau 5ms). Sau đó, chuyển đổi các frame này thành Power Spectrogram (ma trận năng lượng theo tần số và thời gian).
+
+4. Giai đoạn Trích xuất đặc trưng (Core Extraction)
+
+Mục tiêu: Rút trích các thông số quan trọng nhất để phân biệt tiếng người và nhiễu.
+
+Hoạt động: Hàm extract(spec) nhận Power Spectrogram và kiểm tra tính hợp lệ (_check_spec), sau đó song song tính toán:
+
+Tính Band Power: Dùng ma trận trọng số nhân với Spectrogram để lấy công suất trung bình của 4 dải tần (compute_band_power). Giúp nhận diện năng lượng tập trung ở vùng tần số nào.
+
+Tính SFM: Trích xuất độ phẳng của phổ (compute_sfm). Chỉ số này giúp phân biệt âm có tính chu kỳ (giọng nói) hay âm nhiễu đều (tiếng quạt, gió).
+
+5. Giai đoạn Đóng gói và Quản lý trạng thái (Output & Lifecycle)
+
+Mục tiêu: Trả kết quả cho Tầng 2 và dọn dẹp bộ nhớ.
+
+Hoạt động:
+
+Đóng gói Band Power và SFM vào object VADFeatures và trả về.
+
+Khi luồng âm thanh kết thúc, gọi flush() để ép STFT xử lý nốt phần âm thanh lẻ còn sót lại.
+
+Gọi reset() để xóa sạch bộ nhớ đệm STFT, sẵn sàng nhận một file hoặc một phiên thu âm mới hoàn toàn.

@@ -1,0 +1,55 @@
+Các điểm cần cải thiện cho mô hình multi_band vad
+A. Khởi động khi đã có tiếng nói
+Thiên về streaming
+
+E10 và E11 — phát hiện câu đầu trễ khoảng 625 ms.
+
+Noise estimator cần khởi tạo noise floor, nhưng 200 ms đầu bị khóa bởi warm-up. Khi tiếng nói xuất hiện ngay từ đầu, năng lượng lời nói có thể bị hấp thụ vào noise floor, làm SNR bị nén.
+
+Đây là vấn đề điển hình của hệ thống causal streaming: nó phải quyết định dựa trên những gì đã quan sát được, trong khi chưa biết tương lai của luồng âm thanh.
+
+Với offline, bạn có thể sử dụng ngữ cảnh ở cả phía trước và phía sau hoặc xử lý nhiều lượt để ước lượng nền tốt hơn. Tuy nhiên, chạy nguyên pipeline causal hiện tại trên cả file một lượt vẫn có thể gặp đúng lỗi này.
+
+
+
+
+B. Phản ứng khi nhiễu thay đổi đột ngột
+Thiên về streaming
+
+E07 và E09 — False Alarm cao khi nhiễu nhảy bậc.
+
+Noise floor được ước lượng từ lịch sử trước đó, nên có độ trễ khi nền nhiễu thay đổi. Trong thời gian thích nghi, năng lượng nhiễu mới có thể bị coi là bằng chứng tiếng nói.
+
+Đây cũng là vấn đề của bộ ước lượng causal đang dùng. Một phiên bản offline có thể tận dụng thông tin từ phần sau của file để xử lý thay đổi nền, nhưng không tự động hết lỗi nếu vẫn sử dụng cùng luật cập nhật một chiều.
+
+
+
+
+C. Bỏ sót tiếng nói yếu trong nhiễu
+Không riêng streaming
+
+E06 và E08 — Miss Rate lần lượt 35,9% và 34,7% theo báo cáo clean-reference.
+
+Đây là vấn đề về khả năng phân biệt tín hiệu lời nói với nhiễu: noise floor, SNR theo từng băng, sigmoid score hoặc ngưỡng quyết định có thể khiến âm tiết yếu không vượt ngưỡng.
+
+Offline có cơ hội dùng thông tin ngữ cảnh để cải thiện quyết định, nhưng nếu đặc trưng đầu vào không phân biệt được speech với noise thì chỉ đổi sang offline cũng không bảo đảm khắc phục được.
+
+
+
+
+D. Phân mảnh câu và sai ranh giới
+Ảnh hưởng cả hai chế độ
+
+Nếu score tụt dưới ngưỡng trong các âm tiết yếu hoặc khoảng nghỉ ngắn, state machine có thể tách một câu thành nhiều đoạn. Ngược lại, hangover có thể giữ speech quá lâu.
+
+Đây là sự kết hợp giữa chất lượng score của Layer 3 và logic chuyển trạng thái của Layer 4. Dùng offline có thể cho phép smoothing hoặc xử lý hai chiều tốt hơn, nhưng vẫn cần đánh giá thực nghiệm.
+
+
+phân biệt chính sách xử lý theo chế độ:
+Thành phần	Streaming mode	Offline mode
+STFT và band features	Tính tăng dần	Tính trên toàn file
+Noise estimation	Chỉ dùng lịch sử đã quan sát	Có thể dùng thống kê toàn file hoặc xử lý nhiều lượt
+Sigmoid scoring	Nhận feature hiện tại	Có thể kết hợp ngữ cảnh tương lai
+State machine	Quyết định trực tuyến, có độ trễ xác nhận	Có thể hậu xử lý và hiệu chỉnh đoạn
+Độ trễ	Là yêu cầu thiết kế quan trọng	Không cần phản hồi ngay theo thời gian thực
+Mục tiêu tối ưu	Phát hiện nhanh, ổn định, ít báo nhầm	Ranh giới và phân loại đoạn tốt trên toàn bộ bản ghi

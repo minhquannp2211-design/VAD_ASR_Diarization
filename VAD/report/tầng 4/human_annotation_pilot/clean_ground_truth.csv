@@ -1,0 +1,61 @@
+excerpt_id,start_time_s,end_time_s,label,annotator_id,notes
+E01_stat20_16k,0.000,1.215,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E01_stat20_16k,1.215,2.435,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E01_stat20_16k,2.435,3.280,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E01_stat20_16k,3.280,5.255,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E01_stat20_16k,5.255,6.200,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E02_stat20_8k,0.000,0.710,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E02_stat20_8k,0.710,2.765,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E02_stat20_8k,2.765,3.385,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E02_stat20_8k,3.385,4.890,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E02_stat20_8k,4.890,6.000,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E03_stat15_16k,0.000,0.735,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E03_stat15_16k,0.735,2.790,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E03_stat15_16k,2.790,3.410,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E03_stat15_16k,3.410,4.915,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E03_stat15_16k,4.915,6.000,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E04_stat15_8k,0.000,0.720,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E04_stat15_8k,0.720,3.940,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E04_stat15_8k,3.940,5.700,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E05_stat10_16k,0.000,0.860,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E05_stat10_16k,0.860,1.880,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E05_stat10_16k,1.880,2.290,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E05_stat10_16k,2.290,3.230,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E05_stat10_16k,3.230,4.245,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E05_stat10_16k,4.245,6.000,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E06_stat10_8k,0.000,0.895,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E06_stat10_8k,0.895,2.565,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E06_stat10_8k,2.565,2.795,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E06_stat10_8k,2.795,3.050,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E06_stat10_8k,3.050,4.270,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E06_stat10_8k,4.270,6.580,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E06_stat10_8k,6.580,7.300,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E07_step_up_16k,0.000,0.610,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E07_step_up_16k,0.610,2.115,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E07_step_up_16k,2.115,4.160,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E07_step_up_16k,4.160,5.180,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E07_step_up_16k,5.180,5.590,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E07_step_up_16k,5.590,6.530,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E07_step_up_16k,6.530,7.200,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E08_step_down_16k,0.000,0.680,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E08_step_down_16k,0.680,2.530,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E08_step_down_16k,2.530,3.245,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E08_step_down_16k,3.245,5.500,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E08_step_down_16k,5.500,6.500,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E09_step_up_8k,0.000,0.585,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E09_step_up_8k,0.585,2.090,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E09_step_up_8k,2.090,4.135,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E09_step_up_8k,4.135,5.155,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E09_step_up_8k,5.155,5.565,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E09_step_up_8k,5.565,6.505,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E09_step_up_8k,6.505,7.200,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E10_start_16k,0.000,0.015,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E10_start_16k,0.015,1.235,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E10_start_16k,1.235,2.080,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E10_start_16k,2.080,4.055,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E10_start_16k,4.055,5.500,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E11_start_8k,0.000,0.015,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E11_start_8k,0.015,1.235,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E11_start_8k,1.235,2.055,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source
+E11_start_8k,2.055,4.030,SPEECH,clean_speech_energy_ground_truth,Active human speech confirmed on clean source signal
+E11_start_8k,4.030,5.500,NON_SPEECH,clean_speech_energy_ground_truth,Pure silence/background gap in clean source

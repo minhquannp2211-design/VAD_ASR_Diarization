@@ -1,0 +1,32 @@
+"""
+VAD/feature_extraction.py
+TẦNG 1: TRÍCH XUẤT ĐẶC TRƯNG (FEATURE EXTRACTION)
+
+Đầu vào : Power Spectrogram (n_bins, T) float32 từ preset create_vad_streamer()
+          (16 kHz, n_fft=256 -> 129 bin, bin spacing 62.5 Hz, hop 5 ms).
+Đầu ra  : VADFeatures
+          - band_power : (4, T) float32 — công suất trung bình mỗi dải 80-4000 Hz
+          - sfm        : (T,)   float32 — Spectral Flatness trong [0, 1]
+                         (0 = có cấu trúc/tonal ~ tiếng nói, 1 = phẳng ~ nhiễu trắng)
+
+ĐỊNH NGHĨA band_power (QUAN TRỌNG cho noise_estimator.py):
+    band_power = công suất TRUNG BÌNH TRÊN MỖI BIN của dải (không phải tổng năng lượng).
+    Tầng 2 phải dùng CÙNG định nghĩa này cho cả tín hiệu lẫn noise floor
+    (không so trung bình tín hiệu với tổng nhiễu).
+
+Hợp đồng đầu ra: luôn đúng shape/dtype kể cả khi T = 0
+    -> band_power (n_bands, 0), sfm (0,), dtype float32. Tầng sau không cần nhánh đặc biệt.
+
+Vai trò API:
+    - FeatureExtractor.extract(spec)       : nhận Power Spectrogram CÓ SẴN (không nhận waveform).
+    - FeatureExtractor.process_chunk(audio): nhận waveform chunk, gọi StreamingSTFT nội bộ (stateful).
+
+Giới hạn độ phân giải (16 kHz, n_fft=256, bin 62.5 Hz) với DEFAULT_BANDS_HZ:
+    80-300 Hz -> 3 bin (125, 187.5, 250 Hz; bin 62.5 Hz nằm dưới 80 Hz nên dải thực bắt đầu ở 125 Hz)
+    300-1000 -> 11 bin | 1000-2000 -> 16 bin | 2000-4000 -> 32 bin.
+    Cần lưu ý khi đánh giá giọng nói có thành phần tần số thấp.
+
+Kiểm tra giá trị không hữu hạn/âm: chỉ chạy khi debug=True (hoặc trong test) để không tốn hiệu năng streaming.
+
+Voicing Energy Ratio: CHƯA triển khai (theo thiết kế, chỉ thêm sau khi kiểm chứng).
+"""

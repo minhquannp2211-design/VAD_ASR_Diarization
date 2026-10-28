@@ -1,0 +1,61 @@
+BÁO CÁO AUDIT A — SPEECH DURING WARM-UP
+Kiểm tra tiếng nói xuất hiện trong 200 ms đầu của file
+Ngày lập: 24/10/2026
+Phạm vi: FPT Open Speech Data, kiểm tra ở 16 kHz mono; không sửa mã nguồn.
+
+1. MỤC TIÊU
+
+Đánh giá xem tập dữ liệu FPT có file mà tiếng nói đã xuất hiện trong 200 ms đầu hay không. Trường hợp này quan trọng với NoiseEstimator vì warm-up khởi tạo noise floor từ 40 frame đầu; nếu một phần đáng kể cửa sổ này chứa tiếng nói, median khởi tạo có thể không đại diện cho nền nhiễu.
+
+2. PHẠM VI VÀ PHƯƠNG PHÁP
+
+- Transcript có 25.921 bản ghi hợp lệ theo lần quét: 25.917 bản ghi có lời thoại, 4 bản ghi chỉ mang nhãn -N; 430 bản ghi có token -N xen kẽ lời thoại.
+- Chọn 200 file tiếng nói phân bố cách đều theo thứ tự trong tập 25.917 file. Đây là mẫu khảo sát, không phải quét toàn bộ file tiếng nói.
+- Giải mã MP3 thành mono 16 kHz, dùng hop 5 ms. Cửa sổ warm-up gồm 40 frame (xấp xỉ 0–200 ms).
+- Loại frame đệm số 0 của MP3 khi total power <= 1e-9 khỏi ước lượng phân vị nền nội bộ.
+- Với mỗi file, tính total_db[t] = 10*log10(mean_b(band_power[b,t])). File cần có dải động p95_db - p10_db >= 15 dB.
+- Frame được xem là ứng viên tiếng nói nếu total_db[t] >= max(p10_db + 15 dB, p95_db - 20 dB) và SFM[t] < 0,35.
+- Clip đạt điều kiện chính nếu có ít nhất 5 frame ứng viên (>=25 ms) trong 40 frame đầu. Ngưỡng phụ >=20 frame (>=100 ms) dùng để tìm trường hợp có thể tác động mạnh đến median warm-up.
+
+Đây là energy-based pseudo-label, không phải nhãn âm vị thủ công. Onset ước lượng không được xem là biên tiếng nói đã được chuyên gia xác nhận.
+
+3. KẾT QUẢ TỔNG QUAN
+
+- Có ít nhất 1 frame ứng viên tiếng nói trong 200 ms đầu: 32/200 clip (16,0%).
+- Có ít nhất 5 frame ứng viên: 16/200 clip (8,0%).
+- Có ít nhất 20 frame ứng viên: 4/200 clip (2,0%).
+
+Kết luận phân loại: FOUND IN ORIGINAL DATA — tìm thấy theo tiêu chí năng lượng/SFM đã định nghĩa trong mẫu khảo sát.
+
+4. CÁC CLIP ĐẠT NGƯỠNG >=5 FRAME
+
+Các giá trị dưới đây là kết quả được báo cáo từ lần quét. Cột “độ chênh đỉnh so với p10” được dùng thay cho “SNR” vì đây là tương phản năng lượng nội bộ của file, không phải SNR vật lý so với nhiễu nền đã biết.
+
+Filename | Speech frames / 40 | Onset ước lượng (ms) | Đỉnh total_db - p10 (dB) | Mean SFM (all 40 / speech frames) | Mean band power [B0,B1,B2,B3] | Warm-floor lệch quiet-floor [B0,B1,B2,B3] (dB)
+FPTOpenSpeechData_Set001_V0.1_001303.mp3 | 5 | 175 | +44,6 | 0,3278 / 0,0087 | [42,6403; 17,1137; 0,1133; 0,0013] | [+2,4; -7,2; +11,1; +8,9]
+FPTOpenSpeechData_Set001_V0.1_001433.mp3 | 34 | 15 | +44,4 | 0,0149 / 0,0043 | [1,4109; 0,0088; 0,0001; 0,0001] | [+40,5; +22,3; +3,2; +3,6]
+FPTOpenSpeechData_Set001_V0.1_001954.mp3 | 9 | 155 | +29,1 | 0,2156 / 0,0196 | [0,4244; 9,3098; 0,4990; 0,0456] | [-2,4; -0,8; -0,6; +0,8]
+FPTOpenSpeechData_Set001_V0.1_003256.mp3 | 15 | 125 | +42,6 | 0,1851 / 0,0168 | [0,7489; 12,6692; 0,1379; 0,0117] | [+2,3; -0,1; -0,9; -0,3]
+FPTOpenSpeechData_Set001_V0.1_005340.mp3 | 13 | 60 | +38,2 | 0,1809 / 0,0787 | [0,0605; 1,5208; 0,9867; 0,0395] | [+13,0; +33,4; +31,3; +27,4]
+FPTOpenSpeechData_Set001_V0.1_006382.mp3 | 11 | 145 | +41,4 | 0,2743 / 0,1569 | [2,0192; 7,7973; 2,7120; 1,2398] | [+5,0; +0,8; +0,0; +0,5]
+FPTOpenSpeechData_Set001_V0.1_007163.mp3 | 18 | 90 | +52,3 | 0,1203 / 0,0006 | [5,3682; 0,0467; 0,0001; 0,0000] | [+35,2; +19,9; +2,8; +2,0]
+FPTOpenSpeechData_Set001_V0.1_008467.mp3 | 16 | 45 | +40,7 | 0,1343 / 0,0031 | [3,7022; 0,2633; 0,0016; 0,0003] | [+17,7; +6,3; +7,5; -0,6]
+FPTOpenSpeechData_Set001_V0.1_009378.mp3 | 15 | 15 | +25,6 | 0,1592 / 0,0568 | [0,0767; 0,0268; 0,0004; 0,0008] | [+13,0; +6,0; +2,3; +1,4]
+FPTOpenSpeechData_Set001_V0.1_010160.mp3 | 15 | 125 | +34,0 | 0,2981 / 0,0016 | [19,5868; 2,2479; 0,0081; 0,0086] | [+11,0; +0,8; -8,4; -2,3]
+FPTOpenSpeechData_Set001_V0.1_011856.mp3 | 14 | 15 | +26,5 | 0,0158 / 0,0090 | [50,2269; 0,2410; 0,0273; 0,0082] | [+21,0; +3,0; +0,1; +1,2]
+FPTOpenSpeechData_Set001_V0.1_012376.mp3 | 15 | 45 | +33,6 | 0,1363 / 0,0018 | [0,2142; 0,0065; 0,0001; 0,0000] | [+22,3; +4,9; +8,4; +1,3]
+FPTOpenSpeechData_Set002_V0.1_002031.mp3 | 25 | 55 | +36,2 | 0,0698 / 0,0009 | [6,7855; 0,0825; 0,0004; 0,0001] | [+28,3; +22,9; +3,7; +1,0]
+FPTOpenSpeechData_Set002_V0.1_008412.mp3 | 7 | 115 | +43,1 | 0,4509 / 0,1368 | [1,7241; 0,1343; 0,0178; 0,0046] | [-43,4; -51,9; -72,0; -68,6] — 22 frame đầu là số 0
+FPTOpenSpeechData_Set002_V0.1_009585.mp3 | 32 | 25 | +21,0 | 0,0639 / 0,0081 | [59,3417; 61,8474; 1,0130; 0,2737] | [+21,1; +26,1; +15,4; +6,3]
+FPTOpenSpeechData_Set002_V0.1_011408.mp3 | 36 | 20 | +71,3 | 0,1031 / 0,0449 | [78,7707; 52,2422; 5,9745; 0,2245] | [+70,0; +68,9; +60,9; +49,8]
+
+5. DIỄN GIẢI VÀ HẠN CHẾ
+
+- 16/200 clip có >=25 ms tiếng nói ứng viên trong cửa sổ warm-up; 4/200 có >=100 ms. Đây là bằng chứng cho thấy khởi tạo từ 40 frame đầu có thể chịu ảnh hưởng của tiếng nói ở một phần các file.
+- Ngưỡng >=20 frame không tự động chứng minh median bị lệch đúng bằng mức chênh đã báo cáo. Mức lệch warm_floor/quiet_floor cần được xem như chỉ báo theo băng; cần đối chiếu định nghĩa quiet_floor và frame MP3 padding trước khi dùng làm kết quả chuẩn.
+- Một file có 22 frame đệm số 0 cho thấy MP3 padding có thể ảnh hưởng phép đo nếu không xử lý nhất quán.
+- 200 file là mẫu cách đều, không phải toàn bộ 25.917 file. Kết luận chỉ có hiệu lực trong phạm vi mẫu và tiêu chí trên.
+
+6. KẾT LUẬN
+
+Điều kiện A được tìm thấy trong dữ liệu gốc theo bộ phân loại năng lượng/SFM đã định nghĩa. Khuyến nghị giữ các clip này làm mẫu khảo sát đầu vào, nhưng không xem pseudo-label là xác nhận thủ công. Khi đánh giá chính sách warm-up, cần giữ riêng file có padding MP3 và báo cáo độ lệch noise floor theo định nghĩa reference rõ ràng.

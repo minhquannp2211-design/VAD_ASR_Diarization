@@ -1,0 +1,165 @@
+# BÁO CÁO KIỂM THỬ BENCHMARK END-TO-END (TẦNG 1 -> TẦNG 4) — STAGE C2
+Ngày: 27/10/2026
+Phạm vi: Đánh giá pipeline `FeatureExtractor` (Tầng 1) -> `NoiseEstimator` (Tầng 2) -> `SigmoidScorer` (Tầng 3) -> `VADStateMachine` (Tầng 4) trên 5 kịch bản trộn FPT Open Speech Data ở 16 kHz và 8 kHz.
+
+---
+
+## 1. CẤU HÌNH BASELINE & ĐỊNH NGHĨA CHỈ SỐ
+
+### 1.1. Cấu hình giữ nguyên (không tinh chỉnh tham số)
+- **Tầng 1 (`FeatureExtractor`)**: `hop_seconds = 0.005 s` (5 ms), 4 dải tần `(80-300, 300-1000, 1000-2000, 2000-4000 Hz)`, SFM trên `80-4000 Hz`.
+- **Tầng 2 (`NoiseConfig`)**: `init_frames = 40` (200 ms), `alpha_fast = 0.15`, `alpha_slow = 0.01`, `snr_noise_db = 6.0`, `snr_speech_db = 9.0`, `strong_confirm_frames = 3`, `sfm_thresh = 0.15`, `max_freeze_frames = 500`, `recover_frames = 100`.
+- **Tầng 3 (`SigmoidConfig`)**: `band_weights = (1.0, 2.0, 2.0, 1.0)`, `sfm_weight = 2.0`, `bias = -4.0`, `snr_low_db = 0.0`, `snr_high_db = 20.0`, `warmup_score = 0.0`.
+- **Tầng 4 (`StateMachineConfig`)**: `onset_thresh = 0.55`, `offset_thresh = 0.35`, `onset_ms = 30.0` (6 frame), `hangover_ms = 150.0` (30 frame), `min_speech_ms = 100.0` (20 frame bằng chứng tiếng nói), `min_silence_ms = 100.0` (20 frame).
+
+### 1.2. Định nghĩa toán học của các chỉ số (trên toàn bộ T frame của stream, bao gồm cả 40 frame warm-up)
+Gọi `gt[t] ∈ {True, False}` là nhãn giả lập theo năng lượng trên nguồn sạch trước khi trộn nhiễu (`gt_speech_frame`), và `pred[t] ∈ {True, False}` là mặt nạ dự đoán tại frame `t`:
+- `TP = sum(pred & gt)`, `FN = sum((~pred) & gt)`, `FP = sum(pred & (~gt))`, `TN = sum((~pred) & (~gt))`
+- **Miss Rate (%)** = `FN / (TP + FN) * 100` (Tử số: số frame có tiếng nói bị bỏ sót; Mẫu số: tổng số frame tiếng nói chuẩn `TP + FN`).
+- **False Alarm Rate (%)** = `FP / (FP + TN) * 100` (Tử số: số frame không có lời bị báo nhầm; Mẫu số: tổng số frame không có lời `FP + TN`).
+- **Recall (%)** = `TP / (TP + FN) * 100 = 100 - Miss Rate`.
+- **Precision (%)** = `TP / (TP + FP) * 100`.
+- **F1 (%)** = `2 * TP / (2 * TP + FP + FN) * 100`.
+- **Quy đổi đoạn Tầng 4 sang mặt nạ frame (`L4 Final Segments`)**: Mỗi đoạn `(start_time, end_time)` từ `process_chunk() + flush()` là khoảng nửa mở `[start_time, end_time)` tương ứng với các frame `s_f <= t < e_f`, trong đó `s_f = round(start_time / hop_s)` và `e_f = round(end_time / hop_s)`.
+- **Khác biệt với `L4 Imm speech_mask`**: `StateMachineOutput.speech_mask` chỉ đánh dấu các frame có trạng thái tức thời là `SPEECH` hoặc `HANGOVER` (chưa bao gồm các frame `ONSET` đã xác nhận ở đầu đoạn, chưa nối khoảng lặng `min_silence_ms` và chưa lọc `min_speech_ms`).
+
+---
+
+## 2. KẾT QUẢ CHI TIẾT THEO KỊCH BẢN & SAMPLE RATE
+
+### 2.1. Sample Rate = 16000 Hz (`T = 7360` frames = `36.8s`; riêng `speech_at_start` `T = 7120` frames = `35.6s`; `Ref Speech = 18.8s`, `12` đoạn GT)
+
+| Kịch bản (16 kHz) | Bộ phát hiện | Miss (%) | FA (%) | Prec (%) | Rec (%) | F1 (%) | Dur Pred/Ref (s) | Segs (Match/Pred/GT) | \|OnErr\| (ms) | \|OffErr\| (ms) |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **stationary_20db** | L2 Raw (`SNR>=9dB`) | 11.3 | 8.0 | 92.0 | 88.7 | 90.4 | 18.1 / 18.8 | 12 / 21 / 12 | 5 | 48 |
+| | L3 Raw (`p>=0.30`) | 15.2 | 4.4 | 95.3 | 84.8 | 89.7 | 16.7 / 18.8 | 12 / 18 / 12 | 2 | 42 |
+| | L3 Raw (`p>=0.50`) | 24.7 | 1.2 | 98.5 | 75.3 | 85.4 | 14.4 / 18.8 | 12 / 22 / 12 | 10 | 67 |
+| | L3 Raw (`p>=0.70`) | 37.5 | 0.3 | 99.5 | 62.5 | 76.7 | 11.8 / 18.8 | 12 / 26 / 12 | 47 | 200 |
+| | **L4 Final Segments** | **1.8** | **17.5** | **85.4** | **98.2** | **91.4** | **21.6 / 18.8** | **11 / 14 / 12** | **5** | **90** |
+| | L4 Imm `speech_mask` | 4.4 | 17.8 | 84.9 | 95.6 | 90.0 | 21.2 / 18.8 | 11 / 15 / 12 | 30 | 90 |
+| **stationary_15db** | L2 Raw (`SNR>=9dB`) | 26.3 | 6.5 | 92.2 | 73.7 | 81.9 | 15.0 / 18.8 | 12 / 29 / 12 | 53 | 187 |
+| | L3 Raw (`p>=0.30`) | 30.1 | 4.0 | 94.8 | 69.9 | 80.5 | 13.9 / 18.8 | 12 / 27 / 12 | 70 | 173 |
+| | L3 Raw (`p>=0.50`) | 45.1 | 1.1 | 98.1 | 54.9 | 70.4 | 10.5 / 18.8 | 12 / 33 / 12 | 45 | 423 |
+| | L3 Raw (`p>=0.70`) | 64.0 | 0.3 | 99.1 | 36.0 | 52.8 | 6.8 / 18.8 | 12 / 33 / 12 | 15 | 703 |
+| | **L4 Final Segments** | **4.6** | **13.6** | **88.0** | **95.4** | **91.6** | **20.4 / 18.8** | **12 / 18 / 12** | **22** | **83** |
+| | L4 Imm `speech_mask` | 8.5 | 14.2 | 87.1 | 91.5 | 89.2 | 19.8 / 18.8 | 12 / 18 / 12 | 40 | 83 |
+| **stationary_10db** | L2 Raw (`SNR>=9dB`) | 39.6 | 7.5 | 89.4 | 60.4 | 72.1 | 12.7 / 18.8 | 12 / 37 / 12 | 65 | 320 |
+| | L3 Raw (`p>=0.30`) | 46.4 | 4.7 | 92.2 | 53.6 | 67.8 | 10.9 / 18.8 | 12 / 37 / 12 | 270 | 628 |
+| | L3 Raw (`p>=0.50`) | 65.3 | 1.4 | 96.4 | 34.7 | 51.1 | 6.8 / 18.8 | 12 / 32 / 12 | 35 | 840 |
+| | L3 Raw (`p>=0.70`) | 80.3 | 0.4 | 98.1 | 19.7 | 32.8 | 3.8 / 18.8 | 10 / 30 / 12 | 58 | 935 |
+| | **L4 Final Segments** | **30.6** | **9.4** | **88.6** | **69.4** | **77.8** | **14.8 / 18.8** | **12 / 19 / 12** | **62** | **493** |
+| | L4 Imm `speech_mask` | 32.3 | 11.0 | 86.5 | 67.7 | 76.0 | 14.7 / 18.8 | 12 / 22 / 12 | 73 | 493 |
+| **step_up_down** | L2 Raw (`SNR>=9dB`) | 21.5 | 18.3 | 81.8 | 78.5 | 80.1 | 18.1 / 18.8 | 11 / 25 / 12 | 40 | 65 |
+| | L3 Raw (`p>=0.30`) | 24.6 | 14.7 | 84.3 | 75.4 | 79.6 | 16.8 / 18.8 | 11 / 18 / 12 | 0 | 60 |
+| | L3 Raw (`p>=0.50`) | 37.9 | 6.4 | 91.0 | 62.1 | 73.8 | 12.8 / 18.8 | 11 / 26 / 12 | 5 | 60 |
+| | L3 Raw (`p>=0.70`) | 51.5 | 1.9 | 96.3 | 48.5 | 64.5 | 9.5 / 18.8 | 10 / 25 / 12 | 18 | 200 |
+| | **L4 Final Segments** | **15.2** | **24.8** | **78.2** | **84.8** | **81.3** | **20.4 / 18.8** | **10 / 15 / 12** | **45** | **125** |
+| | L4 Imm `speech_mask` | 14.9 | 25.1 | 78.0 | 85.1 | 81.4 | 20.5 / 18.8 | 10 / 18 / 12 | 70 | 125 |
+| **speech_at_start** | L2 Raw (`SNR>=9dB`) | 24.5 | 7.2 | 92.1 | 75.5 | 83.0 | 15.4 / 18.8 | 11 / 20 / 12 | 125 | 215 |
+| | L3 Raw (`p>=0.30`) | 27.6 | 4.6 | 94.7 | 72.4 | 82.0 | 14.4 / 18.8 | 11 / 18 / 12 | 5 | 175 |
+| | L3 Raw (`p>=0.50`) | 42.3 | 0.8 | 98.8 | 57.7 | 72.9 | 11.0 / 18.8 | 12 / 26 / 12 | 22 | 308 |
+| | L3 Raw (`p>=0.70`) | 60.9 | 0.2 | 99.5 | 39.1 | 56.2 | 7.4 / 18.8 | 12 / 32 / 12 | 635 | 643 |
+| | **L4 Final Segments** | **6.2** | **17.0** | **86.1** | **93.8** | **89.8** | **20.5 / 18.8** | **11 / 14 / 12** | **25** | **85** |
+| | L4 Imm `speech_mask` | 9.9 | 16.2 | 86.2 | 90.1 | 88.1 | 19.7 / 18.8 | 11 / 13 / 12 | 50 | 85 |
+
+---
+
+### 2.2. Sample Rate = 8000 Hz (`T = 7356` frames = `36.8s`; riêng `speech_at_start` `T = 7116` frames = `35.6s`; `Ref Speech = 18.8s`, `12` đoạn GT)
+
+| Kịch bản (8 kHz) | Bộ phát hiện | Miss (%) | FA (%) | Prec (%) | Rec (%) | F1 (%) | Dur Pred/Ref (s) | Segs (Match/Pred/GT) | \|OnErr\| (ms) | \|OffErr\| (ms) |
+| :--- | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **stationary_20db** | L2 Raw (`SNR>=9dB`) | 12.5 | 11.2 | 89.1 | 87.5 | 88.3 | 18.5 / 18.8 | 11 / 21 / 12 | 20 | 85 |
+| | L3 Raw (`p>=0.30`) | 15.0 | 5.1 | 94.6 | 85.0 | 89.5 | 16.9 / 18.8 | 11 / 17 / 12 | 0 | 60 |
+| | L3 Raw (`p>=0.50`) | 25.1 | 1.3 | 98.4 | 74.9 | 85.1 | 14.3 / 18.8 | 12 / 23 / 12 | 5 | 90 |
+| | L3 Raw (`p>=0.70`) | 36.2 | 0.3 | 99.5 | 63.8 | 77.8 | 12.1 / 18.8 | 12 / 26 / 12 | 10 | 320 |
+| | **L4 Final Segments** | **1.7** | **18.7** | **84.6** | **98.3** | **90.9** | **21.8 / 18.8** | **11 / 14 / 12** | **5** | **90** |
+| | L4 Imm `speech_mask` | 4.4 | 19.3 | 83.8 | 95.6 | 89.3 | 21.4 / 18.8 | 11 / 15 / 12 | 30 | 90 |
+| **stationary_15db** | L2 Raw (`SNR>=9dB`) | 23.7 | 7.5 | 91.4 | 76.3 | 83.2 | 15.7 / 18.8 | 12 / 29 / 12 | 40 | 112 |
+| | L3 Raw (`p>=0.30`) | 27.7 | 4.7 | 94.1 | 72.3 | 81.8 | 14.4 / 18.8 | 12 / 23 / 12 | 30 | 125 |
+| | L3 Raw (`p>=0.50`) | 41.8 | 1.4 | 97.8 | 58.2 | 72.9 | 11.2 / 18.8 | 12 / 31 / 12 | 13 | 522 |
+| | L3 Raw (`p>=0.70`) | 58.3 | 0.3 | 99.2 | 41.7 | 58.7 | 7.9 / 18.8 | 12 / 31 / 12 | 22 | 705 |
+| | **L4 Final Segments** | **5.3** | **14.8** | **87.0** | **94.7** | **90.7** | **20.5 / 18.8** | **12 / 19 / 12** | **22** | **97** |
+| | L4 Imm `speech_mask` | 8.4 | 15.1 | 86.4 | 91.6 | 88.9 | 19.9 / 18.8 | 12 / 19 / 12 | 48 | 90 |
+| **stationary_10db** | L2 Raw (`SNR>=9dB`) | 42.2 | 7.6 | 88.9 | 57.8 | 70.1 | 12.2 / 18.8 | 12 / 37 / 12 | 75 | 460 |
+| | L3 Raw (`p>=0.30`) | 48.8 | 4.6 | 92.0 | 51.2 | 65.8 | 10.5 / 18.8 | 12 / 35 / 12 | 262 | 623 |
+| | L3 Raw (`p>=0.50`) | 66.8 | 1.4 | 96.2 | 33.2 | 49.4 | 6.5 / 18.8 | 12 / 37 / 12 | 35 | 972 |
+| | L3 Raw (`p>=0.70`) | 81.3 | 0.4 | 98.1 | 18.7 | 31.4 | 3.6 / 18.8 | 10 / 26 / 12 | 62 | 902 |
+| | **L4 Final Segments** | **30.1** | **10.8** | **87.1** | **69.9** | **77.6** | **15.1 / 18.8** | **12 / 20 / 12** | **62** | **480** |
+| | L4 Imm `speech_mask` | 33.1 | 10.9 | 86.5 | 66.9 | 75.5 | 14.5 / 18.8 | 12 / 21 / 12 | 72 | 480 |
+| **step_up_down** | L2 Raw (`SNR>=9dB`) | 22.9 | 21.8 | 78.7 | 77.1 | 77.9 | 18.4 / 18.8 | 10 / 23 / 12 | 58 | 367 |
+| | L3 Raw (`p>=0.30`) | 25.2 | 15.6 | 83.3 | 74.8 | 78.9 | 16.9 / 18.8 | 10 / 17 / 12 | 2 | 203 |
+| | L3 Raw (`p>=0.50`) | 38.9 | 6.6 | 90.6 | 61.1 | 73.0 | 12.7 / 18.8 | 9 / 23 / 12 | 5 | 95 |
+| | L3 Raw (`p>=0.70`) | 51.0 | 2.0 | 96.3 | 49.0 | 65.0 | 9.6 / 18.8 | 10 / 26 / 12 | 13 | 198 |
+| | **L4 Final Segments** | **18.7** | **25.7** | **76.8** | **81.3** | **79.0** | **19.9 / 18.8** | **9 / 15 / 12** | **15** | **95** |
+| | L4 Imm `speech_mask` | 20.3 | 26.4 | 76.0 | 79.7 | 77.8 | 19.7 / 18.8 | 9 / 16 / 12 | 40 | 95 |
+| **speech_at_start** | L2 Raw (`SNR>=9dB`) | 24.7 | 7.0 | 92.3 | 75.3 | 83.0 | 15.3 / 18.8 | 11 / 20 / 12 | 100 | 215 |
+| | L3 Raw (`p>=0.30`) | 27.8 | 4.4 | 94.8 | 72.2 | 82.0 | 14.3 / 18.8 | 11 / 19 / 12 | 25 | 170 |
+| | L3 Raw (`p>=0.50`) | 42.6 | 0.9 | 98.6 | 57.4 | 72.5 | 10.9 / 18.8 | 12 / 26 / 12 | 30 | 420 |
+| | L3 Raw (`p>=0.70`) | 60.0 | 0.2 | 99.5 | 40.0 | 57.0 | 7.6 / 18.8 | 12 / 32 / 12 | 102 | 688 |
+| | **L4 Final Segments** | **8.1** | **17.5** | **85.4** | **91.9** | **88.5** | **20.2 / 18.8** | **11 / 14 / 12** | **75** | **95** |
+| | L4 Imm `speech_mask` | 10.9 | 16.4 | 85.9 | 89.1 | 87.5 | 19.5 / 18.8 | 11 / 13 / 12 | 100 | 80 |
+
+---
+
+### 2.3. Bảng tổng hợp toàn bộ 5 kịch bản (Aggregate Pooled Frames)
+
+| Sample Rate | Bộ phát hiện | Miss (%) | FA (%) | Prec (%) | Rec (%) | F1 (%) | Dur Pred/Ref (s) | Tổng Segs (Match/Pred/GT) |
+| :---: | :--- | :---: | :---: | :---: | :---: | :---: | :---: | :---: |
+| **16 kHz** | L2 Raw (`SNR>=9dB`) | 24.6 | 9.5 | 89.3 | 75.4 | 81.8 | 79.4 / 94.1 | 58 / 132 / 60 |
+| | L3 Raw (`p>=0.30`) | 28.8 | 6.5 | 92.1 | 71.2 | 80.3 | 72.8 / 94.1 | 58 / 118 / 60 |
+| | L3 Raw (`p>=0.50`) | 43.0 | 2.2 | 96.5 | 57.0 | 71.6 | 55.5 / 94.1 | 59 / 139 / 60 |
+| | L3 Raw (`p>=0.70`) | 58.8 | 0.7 | 98.5 | 41.2 | 58.1 | 39.3 / 94.1 | 56 / 146 / 60 |
+| | **L4 Final Segments** | **11.7** | **16.5** | **85.1** | **88.3** | **86.7** | **97.7 / 94.1** | **56 / 80 / 60** |
+| | L4 Imm `speech_mask` | 14.0 | 16.9 | 84.4 | 86.0 | 85.2 | 95.9 / 94.1 | 56 / 86 / 60 |
+| **8 kHz** | L2 Raw (`SNR>=9dB`) | 25.2 | 11.1 | 87.8 | 74.8 | 80.8 | 80.1 / 94.0 | 56 / 130 / 60 |
+| | L3 Raw (`p>=0.30`) | 28.9 | 6.9 | 91.6 | 71.1 | 80.0 | 73.0 / 94.0 | 56 / 111 / 60 |
+| | L3 Raw (`p>=0.50`) | 43.0 | 2.3 | 96.3 | 57.0 | 71.6 | 55.6 / 94.0 | 57 / 140 / 60 |
+| | L3 Raw (`p>=0.70`) | 57.4 | 0.7 | 98.6 | 42.6 | 59.5 | 40.7 / 94.0 | 56 / 141 / 60 |
+| | **L4 Final Segments** | **12.8** | **17.5** | **84.1** | **87.2** | **85.6** | **97.5 / 94.0** | **55 / 82 / 60** |
+| | L4 Imm `speech_mask` | 15.4 | 17.6 | 83.6 | 84.6 | 84.1 | 95.1 / 94.0 | 55 / 84 / 60 |
+
+---
+
+## 3. PHÂN TÍCH SO SÁNH LAYER 2, LAYER 3 VÀ LAYER 4 (CẢI THIỆN VS ĐÁNH ĐỔI)
+
+1. **Giảm mạnh tỷ lệ bỏ sót lời nói (Miss Rate) và chống băm nhỏ câu nói (Over-segmentation)**:
+   - Khi chỉ dùng ngưỡng tĩnh ở Tầng 3 (`p >= 0.50`), tỷ lệ False Alarm rất thấp (`2.2%`), nhưng **Miss Rate vọt lên tới `43.0%`** và câu nói bị băm vụn thành `139` đoạn ngắn (so với `60` đoạn chuẩn).
+   - Khi đưa qua Tầng 4 (`VADStateMachine`), nhờ hysteresis (`offset_thresh = 0.35 < onset_thresh = 0.55`), `hangover_ms = 150 ms` và `min_silence_ms = 100 ms`:
+     - **Miss Rate tổng hợp giảm từ `43.0%` (L3 `p>=0.50`) và `24.6%` (L2 Raw) xuống còn `11.7%` ở 16 kHz (`12.8%` ở 8 kHz)**.
+     - Riêng ở `stationary_15db` (16 kHz), Miss Rate giảm từ `26.3%` (L2) / `45.1%` (L3 `0.5`) xuống chỉ còn **`4.6%`**, đưa F1-score từ `81.9%` lên **`91.6%`**, đồng thời giảm sai số biên kết thúc câu `|OffErr|` từ `187 ms` xuống **`83 ms`**.
+     - Tổng số đoạn dự đoán giảm từ `132–146` đoạn (bị băm vụn ở L2/L3) xuống còn **`80` đoạn** (tiệm cận `60` đoạn chuẩn).
+2. **Đánh đổi (Trade-off) / Hồi quy trên chỉ số False Alarm theo frame**:
+   - **False Alarm Rate theo frame tăng từ `9.5%` (L2 Raw) / `2.2%` (L3 `p>=0.50`) lên `16.5%` ở 16 kHz (`17.5%` ở 8 kHz)**.
+   - Nguyên nhân vật lý:
+     1) **Đệm đuôi `hangover_ms = 150 ms` và nối `min_silence_ms = 100 ms`**: Nhãn giả lập `gt_speech_frame` đánh dấu các khoảng nghỉ lấy hơi ngắn bên trong câu nói (`gt_pause_frame`) và vùng ngay sau âm tiết cuối là `False` (non-speech). Khi Tầng 4 chủ đích nối liền các khoảng nghỉ ngắn trong câu và ngân thêm `150 ms` ở cuối mỗi câu để bảo vệ âm đuôi cho ASR, các frame đệm đó bị tính là `FP` so với nhãn năng lượng tức thời.
+     2) **Kịch bản `step_up_down` (`FA = 24.8%` ở 16 kHz)**: Trong giai đoạn nhiễu nhảy bậc `+15 dB` (`12–24 s`), trước khi `NoiseEstimator` kịp phục hồi nền nhiễu, điểm Sigmoid vượt `onset_thresh` và mỗi lần kích hoạt sẽ được `hangover_ms = 150 ms` kéo dài thêm.
+3. **So sánh `L4 Final Segments` và `L4 Imm speech_mask`**:
+   - `L4 Final Segments` bao gồm cả `6` frame `ONSET` (`30 ms`) đã được xác nhận ở đầu mỗi câu nói, nên có **Miss Rate thấp hơn `2.3–2.6%`** và **sai số bắt đầu câu `|OnErr|` nhỏ hơn `20–25 ms`** so với `L4 Imm speech_mask`.
+
+---
+
+## 4. KIỂM CHỨNG BẤT BIẾN STREAMING & CHẨN ĐOÁN STARTUP (`speech_at_start`)
+
+1. **Bất biến theo kích thước chunk (Chunk-Invariance)**:
+   - Ngay trong `evaluate_stream()`, toàn bộ 10 luồng âm thanh (5 kịch bản x 2 sample rate) đã được chạy đối chiếu giữa chế độ batch nguyên khối và chế độ chia chunk (`chunk = 1, 13, 80, 500` frames) xuyên qua `NoiseEstimator -> SigmoidScorer -> VADStateMachine + flush()`.
+   - Kết quả: **Khớp tuyệt đối 100% số đoạn và từng mốc `(start_time, end_time)` đến `1e-9 s`**.
+2. **Ba khía cạnh của bài toán tiếng nói ngay đầu stream (`speech_at_start`)**:
+   - **(a) Hành vi của riêng Tầng 4 khi điểm sau warm-up cao (Unit test)**: Trong 40 frame đầu (`0.000–0.200 s`), `warmup=True` khóa máy trạng thái ở `SILENCE`. Ngay tại frame 40 (`0.200 s`), `ONSET` bắt đầu đếm và tạo đoạn từ `0.200 s` (trễ đúng `200 ms`).
+   - **(b) Hành vi End-to-End trên câu nói đầu tiên (`Utt 1: 0.00..1.25 s`) trong benchmark FPT**:
+     - Do 200 ms đầu của `Utt 1` rơi vào vùng warm-up của Tầng 2, `noise_floor` khởi tạo bị nâng lên theo năng lượng đầu câu nói.
+     - Tuy nhiên, vì lời nói thực có biến thiên năng lượng giữa các âm tiết (khác với sóng hài công suất phẳng lì trong test tổng hợp), nửa sau của `Utt 1` có năng lượng cao hơn đoạn `0–200 ms` đầu nên đạt `mean SNR = 2.56 dB`, `mean p = 0.33`, và đỉnh âm tiết giữa câu vượt `onset_thresh = 0.55`.
+     - Kết quả: Tầng 4 bắt được nửa sau của `Utt 1` với đoạn đầu tiên `(0.625 s, 1.180 s)` (**Recall trên `Utt 1` đạt `46.1%` ở 16 kHz và `46.9%` ở 8 kHz**, mất `625 ms` đầu câu).
+   - **(c) Hành vi trên câu nói thứ hai (`Utt 2: 2.05..4.23 s`) sau khoảng lặng `[1.25 s, 2.05 s]`**:
+     - Trong `0.8 s` khoảng lặng sau `Utt 1`, `NoiseEstimator` hạ `noise_floor` nhanh về mức nền nhiễu thật thông qua cổng `strong`.
+     - Do đó, `Utt 2` được phát hiện đầy đủ (**Recall trên `Utt 2` đạt `96.1%` ở 16 kHz và `77.2%` ở 8 kHz**).
+
+---
+
+## 5. PHÂN LOẠI KẾT LUẬN MINH BẠCH
+
+- **Đã xác minh kỹ thuật bằng code & unit test (Verified Technical Behavior)**:
+  - Hợp đồng Tầng 1 -> Tầng 2 -> Tầng 3 -> Tầng 4, quy ước khoảng nửa mở `[start_time, end_time)`, biên hangover chính xác, ngữ nghĩa `min_speech_ms` độc lập với hangover, và tính bất biến chunk (`chunk = 1..500`) đạt `80/80` unit tests pass.
+- **Kết quả đo trên Benchmark nhãn giả lập (Measured Pseudo-Labeled Benchmark Results)**:
+  - Trên 5 kịch bản trộn FPT (`seed=100`), Tầng 4 nâng F1-score tổng hợp từ `81.8%` (L2 Raw) / `71.6%` (L3 `p>=0.50`) lên **`86.7%` ở 16 kHz** (và từ `80.8%` lên **`85.6%` ở 8 kHz**), giảm hơn một nửa Miss Rate (`24.6% -> 11.7%`) nhưng tăng False Alarm theo frame (`9.5% -> 16.5%`) do vùng ngân hangover và nối khoảng nghỉ giữa từ.
+- **Chưa được đánh giá (Not Evaluated)**:
+  - Chưa có dữ liệu âm thanh thực tế được gán nhãn biên thời gian thủ công bởi con người (human-annotated frame-level VAD labels); mọi tham số hiện tại là baseline khởi điểm, chưa phải bộ tham số tối ưu.

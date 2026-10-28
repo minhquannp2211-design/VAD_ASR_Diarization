@@ -1,0 +1,28 @@
+                    AUDIO INPUT
+                         |
+                         v
+                PIPELINE ROUTER
+                         |
+               +---------+---------+
+               |                   |
+               v                   v
+       STREAMING MODE         OFFLINE MODE
+               |                   |
+               v                   v
+       STREAMING PIPELINE      OFFLINE PIPELINE
+               |                   |
+       +-------+-------+     +-----+----------------+
+       |               |     |                      |
+       v               v     v                      v
+  VAD_STREAMING   ASR_STREAMING  VAD_OFFLINE     ASR_OFFLINE
+       |               |     |                      |
+       +-------+-------+     +----------+-----------+
+               |                        |
+               v                        v
+       STREAMING OUTPUT          DIARIZATION_OFFLINE
+                                          |
+                                          v
+                               SPEAKER-TEXT FUSION
+                                          |
+                                          v
+                                  FINAL OUTPUT

@@ -392,6 +392,39 @@ def create_vad_streamer(sample_rate: int = 16000) -> StreamingSTFT:
     )
 
 
+def vad_stft_params(sample_rate: int = 16000) -> dict:
+    """Tham số STFT của preset VAD (dùng chung cho streaming và batch, để đối chiếu cấu hình)."""
+    win_length = int(sample_rate * 0.016)
+    hop_length = int(sample_rate * 0.005)
+    if win_length <= 0 or hop_length <= 0:
+        raise ValueError(f"sample_rate={sample_rate} qua nho cho preset VAD.")
+    return {
+        "n_fft": _next_power_of_two(win_length),
+        "hop_length": hop_length,
+        "win_length": win_length,
+    }
+
+
+def stft_for_vad(x: np.ndarray, sample_rate: int = 16000, workers: int = 1) -> np.ndarray:
+    """
+    STFT batch cho VAD (hop 5 ms, win 16 ms, power, center=False) — cùng cấu hình với
+    create_vad_streamer(), nên trên các frame đầy đủ kết quả khớp với streaming.
+
+    Quy ước biên: số frame = 1 + (N - n_fft) // hop; phần dư cuối KHÔNG được đệm
+    (khác với StreamingSTFT.flush() vốn có thể tạo thêm 1 frame zero-padded).
+    """
+    p = vad_stft_params(sample_rate)
+    return _core_stft_optimized(
+        x=x,
+        n_fft=p["n_fft"],
+        hop_length=p["hop_length"],
+        win_length=p["win_length"],
+        center=False,
+        output_type="power",
+        workers=workers
+    )
+
+
 def create_asr_streamer(sample_rate: int = 16000) -> StreamingSTFT:
     """Khởi tạo bộ STFT liên tục cho ASR Streaming (hop 10ms, win 25ms)."""
     win_length = int(sample_rate * 0.025)

@@ -1,0 +1,192 @@
+================================================================================
+BÁO CÁO AUDIT ĐỘ TIN CẬY BENCHMARK & CHUẨN BỊ PILOT NHÃN NGƯỜI (STAGE D1)
+(Đã rà soát tính nhất quán cấu hình & tái xác nhận baseline — Stage D1 Closeout)
+================================================================================
+Ngày thực hiện : 2026-10-27
+Phạm vi        : Audit đường ống đánh giá benchmark (benchmark/run_vad_benchmark.py),
+                 tái xác nhận số liệu Stage C2, và chuẩn bị gói Human-Annotation Pilot
+                 (giữ nguyên toàn bộ code sản xuất Tầng 1 -> Tầng 4).
+Trạng thái     :
+  - Phase D1.1 (Audit xây dựng benchmark & pseudo-label) : PASS
+  - Phase D1.2 (Audit căn chỉnh frame & công thức metric): PASS (6/6 unit tests)
+  - Phase D1.3 (Chuẩn bị gói Human-Annotation Pilot)     : PASS (11 WAV excerpts)
+  - Phase D1.4 (Kiểm soát chất lượng & toàn vẹn split)   : PASS (0 rò rỉ câu nói)
+  - Closeout Revalidation (86 unit tests & benchmark C2) : PASS (khớp 100% Stage C2)
+  - Đánh giá trên nhãn người thật (Human Evaluation)     : BLOCKED / NOT EVALUATED
+    (Chờ người gán nhãn điền dữ liệu thực vào annotation_template.csv)
+
+--------------------------------------------------------------------------------
+1. ĐỐI CHIẾU CẤU HÌNH THỰC THI & PHÂN BIỆT NHÃN GIẢ LẬP (TASK 1 & PHASE D1.1)
+--------------------------------------------------------------------------------
+
+1.1. Cấu hình thực thi (Runtime Authority) trong code
+  Khi `benchmark/run_vad_benchmark.py` chạy hàm `evaluate_stream()` (dòng 378-385),
+  các tầng sử dụng cấu hình mặc định thực tế sau:
+  - Tầng 1 (`VAD/feature_extraction.py` — `FeatureExtractor`):
+    + `hop_seconds = 0.005 s` (`5 ms`), cửa sổ Hann `16 ms` (`center = False`).
+    + 4 băng tần `(80-300, 300-1000, 1000-2000, 2000-4000 Hz)` với số bin `[3, 11, 16, 32]`.
+  - Tầng 2 (`VAD/noise_estimator.py` — `NoiseConfig`):
+    + Thời lượng warm-up: `init_frames = 40` frame = `200.0 ms` (`[0.000, 0.200) s` ở `hop = 5 ms`).
+    + `snr_noise_db = 6.0 dB`, `snr_speech_db = 9.0 dB`, `strong_confirm_frames = 3` (`15 ms`),
+      `sfm_thresh = 0.15`, `max_freeze_frames = 500` (`2.5 s`), `recover_frames = 100` (`0.5 s`).
+  - Tầng 3 (`VAD/sigmoid.py` — `SigmoidConfig`):
+    + `band_weights = (1.0, 2.0, 2.0, 1.0)`, `sfm_weight = 2.0`, `bias = -4.0`,
+      `snr_low_db = 0.0 dB`, `snr_high_db = 20.0 dB`, `warmup_score = 0.0`.
+  - Tầng 4 (`VAD/state_machine.py` — `StateMachineConfig`, dòng 121-126):
+    + `onset_thresh = 0.55`, `offset_thresh = 0.35`.
+    + `onset_ms = 30.0 ms` (`6` frame @ `5 ms`).
+    + `hangover_ms = 150.0 ms` (`30` frame @ `5 ms`).
+    + `min_speech_ms = 100.0 ms` (`20` frame bằng chứng tiếng nói `ONSET + SPEECH`, độc lập với hangover).
+    + `min_silence_ms = 100.0 ms` (`20` frame @ `5 ms`).
+
+1.2. Truy vết xây dựng dữ liệu và PHÂN BIỆT RÕ 2 MỨC NHÃN GIẢ LẬP (Pseudo-Labels)
+  - Bước 1 — Tách lõi phát ngôn sạch (`extract_clean_speech_core`, dòng 37-76):
+    + Chọn tối đa 16 file MP3 từ FPT Open Speech Data có độ chênh năng lượng ngắn hạn
+      `p95/p05 >= 35.0 dB` và độ dài sau cắt trong `[1.2, 4.0] s`.
+    + Cắt bỏ vùng lặng đầu/cuối bằng ngưỡng `frame_e > max(p05 * 31.6, p95 * 3e-4)`
+      (`s_sample = s_frame * hop`, `e_sample = min(len(audio), e_frame * hop + win)`),
+      sau đó phủ hàm dốc tuyến tính (linear taper) `10 ms` ở hai đầu đoạn cắt.
+    + Ghép 10 đoạn phát ngôn vào luồng sạch `s_wave` (`~36.8 s`, hoặc `35.6 s` với
+      `speech_at_start`) với `seed = 100` cố định trước khi cộng nhiễu `n_wave`.
+
+  - Bước 2 — Hai loại nhãn giả lập trong `build_clean_ground_truth()` (dòng 334-375):
+    + KHÔNG dùng transcript văn bản làm nhãn toàn câu và KHÔNG phải nhãn do người nghe gán.
+    + Cả hai đều được trích xuất tự động từ công suất toàn dải của tín hiệu sạch `s_wave`
+      (`total_clean_power = sum(P_s * bins_per_band) / sum(bins_per_band)`), nhưng có
+      vai trò và quy tắc xử lý khoảng nghỉ hoàn toàn khác nhau:
+
+      (A) NHÃN GIẢ LẬP MỨC FRAME (`gt_speech_frame`, dòng 353-354):
+          - Định nghĩa: Trong mỗi khoảng câu `[st, et]`, frame `t` (`5 ms`) có
+            `gt_speech_frame[t] = True` khi và chỉ khi:
+            `total_clean_power[t] >= p95_frame * 3.162e-3` (tức `-25 dB` so với phân vị
+            95% của câu nói sạch đó).
+          - Đặc tính: Là phép ngưỡng năng lượng tức thời trên từng frame 5 ms;
+            TUYỆT ĐỐI KHÔNG nối (không bridge) các khoảng nghỉ ngắn giữa các âm tiết
+            hay vùng tắc âm (`gt_pause_frame = in_utt_seg & (~gt_speech_frame)`).
+          - Phạm vi sử dụng: Dùng làm nhãn chuẩn duy nhất cho MỌI chỉ số cấp frame
+            (`TP, FP, FN, TN, Miss Rate, False Alarm Rate, Precision, Recall, F1`).
+
+      (B) NHÃN GIẢ LẬP MỨC ĐOẠN (`gt_segs`, dòng 367):
+          - Định nghĩa: Được tạo từ `gt_speech_frame` thông qua hàm:
+            `mask_to_segments(gt_speech_frame, hop_s, bridge_gap_s=0.15, min_dur_s=0.03)`
+          - Đặc tính: Nối liền các khoảng ngắt năng lượng ngắn `<= bridge_gap_s = 0.15 s`
+            (`150.0 ms` = `30` frame) và loại bỏ các cụm gai ngắn `< min_dur_s = 0.03 s`
+            (`30.0 ms` = `6` frame).
+          - Phạm vi sử dụng: CHỈ dùng để đếm số đoạn chuẩn (`n_gt_segs = 12` đoạn/kịch bản)
+            và ghép cặp 1-1 trong `match_segments_by_time()` nhằm tính số đoạn khớp
+            (`n_matched_segs`) cùng sai số biên `|OnErr|`, `|OffErr|`. `gt_segs` KHÔNG
+            được dùng để tính `TP, FP, FN, TN` cấp frame.
+
+  - Hệ quả trực tiếp lên chỉ số False Alarm của Tầng 4:
+    + Ở Tầng 4, máy trạng thái giữ ngân `hangover_ms = 150.0 ms` (`30` frame) sau mỗi khi
+      điểm Sigmoid xuống dưới `offset_thresh = 0.35`, và hậu xử lý nối tiếp các đoạn cách
+      nhau `<= min_silence_ms = 100.0 ms` (`20` frame).
+    + Khi Tầng 4 bắc cầu qua các khoảng nghỉ ngắn bên trong câu nói (vốn được `gt_segs`
+      nối với `bridge_gap_s = 0.15 s` = `150 ms` ở mức đoạn, nhưng trên `gt_speech_frame`
+      mức frame vẫn mang giá trị `False`) và ngân `150 ms` ở cuối câu, toàn bộ các frame
+      đệm/nối đó bị tính là `FP` so với `gt_speech_frame`. Đây là lý do cần nhãn người
+      thật có vùng `UNCERTAIN` để phân biệt lỗi báo động giả thực sự với vùng ngân/nghỉ
+      tự nhiên trong lời nói.
+
+--------------------------------------------------------------------------------
+2. CĂN CHỈNH FRAME 8 kHz VS 16 kHz & ÁNH XẠ ĐOẠN NỬA MỞ (PHASE D1.2)
+--------------------------------------------------------------------------------
+
+2.1. Quy ước STFT và độ dịch cắt core 20-25 ms giữa 16 kHz và 8 kHz
+  - Tại 16 kHz (`n_fft=256, win=256, hop=80`) và 8 kHz (`n_fft=128, win=128, hop=40`),
+    cả hai đều có `hop_seconds = 0.005 s` và `center = False`, nên frame `t` bắt đầu tại
+    đúng `t * 0.005 s`.
+  - Do `extract_clean_speech_core(a, sr)` chạy độc lập trên sóng đã resample về 16 kHz
+    và 8 kHz, câu nói #2 (`FPTOpenSpeechData_Set001_V0.1_000872.mp3`) ở 8 kHz được cắt
+    ngắn hơn `25 ms` (`5` frame: `2.156 s` ở 8 kHz so với `2.181 s` ở 16 kHz), còn câu #6
+    (`002396.mp3`) ở 8 kHz dài hơn `5 ms` (`3.336 s` vs `3.331 s`).
+  - Kết quả là trong luồng ghép 8 kHz (`7356` frame so với `7360` frame ở 16 kHz):
+    + Câu 1 (`000218.mp3`): khớp tuyệt đối `0 ms` giữa 8 kHz và 16 kHz.
+    + Các câu 2..5: mốc bắt đầu ở 8 kHz dịch sớm hơn `25 ms` (5 frame) so với 16 kHz.
+    + Các câu 6..10: mốc bắt đầu ở 8 kHz dịch sớm hơn `20 ms` (4 frame) so với 16 kHz.
+  - Trong phạm vi từng tần số lấy mẫu, `s_wave` và `mix_wave` dùng chung một `utt_intervals`
+    nên không gây lệch giữa dự đoán và nhãn giả lập nội bộ.
+
+2.2. Ánh xạ khoảng nửa mở `[start_time, end_time)` trong `segments_to_frame_mask()`
+  - Hàm `segments_to_frame_mask(segments, num_frames, hop_s)` trong
+    `benchmark/run_vad_benchmark.py` (dòng 223-243) đã được chuẩn hóa theo bất đẳng thức:
+    frame `t` thuộc `[start_time, end_time)` khi và chỉ khi `start_time <= t * hop_s < end_time`:
+    `s_f = max(0, int(np.ceil(start_t / hop_s - 1e-9)))`
+    `e_f = min(num_frames, int(np.ceil(end_t / hop_s - 1e-9)))`
+  - Với mọi đoạn đầu ra từ Tầng 4 (luôn có `start_t = k1 * hop_s`, `end_t = k2 * hop_s`
+    với `k1, k2` nguyên), `ceil(k - 1e-9) == k == round(k)`, nên kết quả trùng khớp 100%
+    với Stage C2, đồng thời xử lý đúng các khoảng thời gian lẻ sub-frame từ nhãn người.
+
+--------------------------------------------------------------------------------
+3. KIỂM TOÁN TÍNH TOÀN VẸN PHÂN CHIA DEV / EVAL TRONG MANIFEST (TASK 2)
+--------------------------------------------------------------------------------
+
+3.1. Phát hiện rò rỉ trong manifest ban đầu và cách khắc phục
+  - Khi kiểm tra chéo các file câu nói nguồn (`source_utterances`) trên 11 đoạn trích
+    (`E01`..`E11`, tất cả đều trích từ các luồng benchmark với `seed = 100`), toàn bộ
+    10 câu nói nguồn (`U01`..`U10`) tạo thành 4 nhóm liên thông rời nhau tuyệt đối
+    (`source_group_id`):
+    1) `SG1_U01_U02` (`000218.mp3 | 000872.mp3`): xuất hiện ở `E01_stat20_16k`,
+       `E10_start_16k` (16 kHz) và `E11_start_8k` (8 kHz).
+    2) `SG2_U03_U06` (`001307.mp3 | 001743.mp3 | 001961.mp3 | 002396.mp3`): xuất hiện ở
+       `E02_stat20_8k` (8 kHz, `U03|U04`), `E03_stat15_16k` (16 kHz, `U03|U04`),
+       `E04_stat15_8k` (8 kHz, `U06`), `E05_stat10_16k` (16 kHz, `U05|U06`),
+       `E07_step_up_16k` (16 kHz, `U04|U05`), và `E09_step_up_8k` (8 kHz, `U04|U05`).
+    3) `SG3_U07_U08` (`002614.mp3 | 002832.mp3`): xuất hiện ở `E08_step_down_16k` (16 kHz).
+    4) `SG4_U09_U10` (`003703.mp3 | 004139.mp3`): xuất hiện ở `E06_stat10_8k` (8 kHz).
+
+  - Trong bản `pilot_manifest.csv` ban đầu, việc gán `dev`/`eval` xen kẽ làm cho:
+    + Cặp 16 kHz / 8 kHz của cùng câu nguồn (`E10` vs `E11`, `E03` vs `E02`, `E07` vs `E09`)
+      bị tách sang hai tập khác nhau;
+    + Các câu `000218.mp3`, `000872.mp3`, `001307.mp3`, `001743.mp3`, `001961.mp3`,
+      `002396.mp3` xuất hiện ở cả `dev` và `eval`.
+
+  - Sửa đổi nhỏ nhất đã thực hiện trong `pilot_manifest.csv` và `pilot_tools.py`:
+    + Bổ sung cột `source_group_id` vào `pilot_manifest.csv` (không thay đổi bất kỳ mốc
+      thời gian hay file WAV nào).
+    + Gán `split`厳 ngặt theo `source_group_id`:
+      * Tập `dev` (5 đoạn, `31.0 s` = `6200` frame, 6 câu nguồn độc lập `U01, U02, U07, U08, U09, U10`):
+        - `SG1_U01_U02`: `E01_stat20_16k`, `E10_start_16k`, `E11_start_8k` (gồm cặp 16k/8k `E10`/`E11`)
+        - `SG3_U07_U08`: `E08_step_down_16k`
+        - `SG4_U09_U10`: `E06_stat10_8k`
+      * Tập `eval` (6 đoạn, `38.1 s` = `7620` frame, 4 câu nguồn độc lập `U03, U04, U05, U06`):
+        - `SG2_U03_U06`: `E02_stat20_8k`, `E03_stat15_16k`, `E04_stat15_8k`,
+          `E05_stat10_16k`, `E07_step_up_16k`, `E09_step_up_8k` (gồm 2 cặp 8k/16k `E02`/`E03` và `E07`/`E09`)
+    + Bổ sung hàm `validate_manifest_split_integrity()` được gọi tự động trong
+      `pilot_tools.load_manifest()` và kiểm thử tự động trong `tests/test_benchmark_metrics.py`
+      để chặn mọi rò rỉ câu nói nguồn hoặc lệch split giữa cùng `source_group_id`.
+
+--------------------------------------------------------------------------------
+4. TÁI XÁC NHẬN METRIC & ĐỐI CHIẾU BASELINE STAGE C2 (TASK 3)
+--------------------------------------------------------------------------------
+
+4.1. Kết quả chạy bộ kiểm thử hồi quy toàn diện (Tầng 1 -> Tầng 4 & Metric Benchmark)
+  - Lệnh:
+    `py -m pytest tests/test_benchmark_metrics.py tests/test_state_machine.py tests/test_sigmoid.py tests/test_noise_estimator.py tests/test_feature_extraction.py -q`
+  - Kết quả: `86 passed` (0 lỗi, 0 cảnh báo hồi quy).
+
+4.2. Kết quả chạy lại `py benchmark/run_vad_benchmark.py` và đối chiếu với Stage C2
+  - Lệnh:
+    `py benchmark/run_vad_benchmark.py`
+  - Kết quả đối chiếu với `VAD/report/tầng 4/bao_cao_benchmark_end_to_end_stage_c2.txt`:
+    + **KHỚP TUYỆT ĐỐI 100% (UNCHANGED)** trên cả 5 kịch bản ở 16 kHz và 8 kHz, cũng như
+      bảng tổng hợp `Aggregate Pooled Frames`:
+      * **16 kHz Pooled Aggregate**:
+        - `L2 Raw (SNR>=9dB)` : Miss=`24.6%`, FA=`9.5%`, Prec=`89.3%`, Rec=`75.4%`, F1=`81.8%`, Segs=`58/132/60`
+        - `L3 Raw (p>=0.30)`  : Miss=`28.8%`, FA=`6.5%`, Prec=`92.1%`, Rec=`71.2%`, F1=`80.3%`, Segs=`58/118/60`
+        - `L3 Raw (p>=0.50)`  : Miss=`43.0%`, FA=`2.2%`, Prec=`96.5%`, Rec=`57.0%`, F1=`71.6%`, Segs=`59/139/60`
+        - `L3 Raw (p>=0.70)`  : Miss=`58.8%`, FA=`0.7%`, Prec=`98.5%`, Rec=`41.2%`, F1=`58.1%`, Segs=`56/146/60`
+        - `L4 Final Segments` : Miss=`11.7%`, FA=`16.5%`, Prec=`85.1%`, Rec=`88.3%`, F1=`86.7%`, Segs=`56/80/60`
+        - `L4 Imm speech_mask`: Miss=`14.0%`, FA=`16.9%`, Prec=`84.4%`, Rec=`86.0%`, F1=`85.2%`, Segs=`56/86/60`
+      * **8 kHz Pooled Aggregate**:
+        - `L2 Raw (SNR>=9dB)` : Miss=`25.2%`, FA=`11.1%`, Prec=`87.8%`, Rec=`74.8%`, F1=`80.8%`, Segs=`56/130/60`
+        - `L3 Raw (p>=0.30)`  : Miss=`28.9%`, FA=`6.9%`, Prec=`91.6%`, Rec=`71.1%`, F1=`80.0%`, Segs=`56/111/60`
+        - `L3 Raw (p>=0.50)`  : Miss=`43.0%`, FA=`2.3%`, Prec=`96.3%`, Rec=`57.0%`, F1=`71.6%`, Segs=`57/140/60`
+        - `L3 Raw (p>=0.70)`  : Miss=`57.4%`, FA=`0.7%`, Prec=`98.6%`, Rec=`42.6%`, F1=`59.5%`, Segs=`56/141/60`
+        - `L4 Final Segments` : Miss=`12.8%`, FA=`17.5%`, Prec=`84.1%`, Rec=`87.2%`, F1=`85.6%`, Segs=`55/82/60`
+        - `L4 Imm speech_mask`: Miss=`15.4%`, FA=`17.6%`, Prec=`83.6%`, Rec=`84.6%`, F1=`84.1%`, Segs=`55/84/60`
+    + Lý do toán học: Các đoạn `(start_time, end_time)` do `VADStateMachine` xuất ra đều
+      nằm trên bội số nguyên của `hop_s = 0.005 s`, nên phép sửa `segments_to_frame_mask()`
+      bảo toàn tuyệt đối mọi con số của Stage C2 trong khi đảm bảo tính đúng đắn cho các
+      khoảng thời gian lẻ sub-frame của nhãn người.
+================================================================================

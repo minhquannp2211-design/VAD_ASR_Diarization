@@ -1,0 +1,78 @@
+VAD/sigmoid.py - TRA CỨU NHANH CÁC LỚP VÀ HÀM CHÍNH (TẦNG 3)
+
+1. CẤU TRÚC DỮ LIỆU
+
+SigmoidConfig (dataclass, frozen=True)
+- Chức năng: Cấu hình các trọng số, độ lệch (bias) và ngưỡng chuẩn hóa cho bộ chấm điểm Adaptive Sigmoid.
+- Các trường chính (giá trị mặc định là BASELINE thiết kế vật lý, chưa hiệu chỉnh xác suất trên nhãn thủ công):
+  - band_weights: Tuple[float, ...] = (1.0, 2.0, 2.0, 1.0)
+    Trọng số w_j cho 4 dải tần (ưu tiên băng F1 300-1000 Hz và F2 1000-2000 Hz).
+  - sfm_weight: float = 2.0
+    Trọng số w_f cho đại lượng độ có cấu trúc phổ (1 - SFM).
+  - bias: float = -4.0
+    Độ lệch nền b (tại SNR=10 dB trên 4 băng và SFM=0.5 -> z(t) = 0.0 -> p(t) = 0.5).
+  - snr_low_db: float = 0.0
+    Cận dưới chuẩn hóa SNR (SNR <= snr_low_db -> SNR_norm = 0.0).
+  - snr_high_db: float = 20.0
+    Cận trên chuẩn hóa SNR (SNR >= snr_high_db -> SNR_norm = 1.0).
+  - warmup_score: float = 0.0
+    Điểm cố định gán cho các frame đang trong giai đoạn warm-up (warmup[t] == True).
+  - warmup_logit: float = -20.0
+    Logit cố định gán cho các frame đang trong giai đoạn warm-up.
+- Phương thức:
+  - validate(num_bands=None): Kiểm tra tính hợp lệ của toàn bộ tham số cấu hình.
+
+SigmoidOutput (dataclass, frozen=True)
+- Chức năng: Đóng gói kết quả chấm điểm Tầng 3 cho chuỗi T frame.
+- Các trường:
+  - score: np.ndarray, shape (T,), dtype float32, trong [0, 1]
+    Điểm phát hiện tiếng nói p(t) (uncalibrated detection score, KHÔNG mặc nhiên là xác suất đã hiệu chỉnh).
+  - logit: np.ndarray, shape (T,), dtype float32
+    Giá trị tổ hợp tuyến tính z(t) trước khi qua hàm sigmoid.
+  - snr_norm: np.ndarray, shape (n_bands, T), dtype float32, trong [0, 1]
+    SNR đã chuẩn hóa về [0, 1] theo từng băng; bằng 0.0 tại các frame warmup=True.
+  - flatness_complement: np.ndarray, shape (T,), dtype float32, trong [0, 1]
+    Đại lượng 1 - clip(sfm, 0, 1).
+  - warmup: np.ndarray, shape (T,), dtype bool
+    Cờ warm-up truyền nguyên vẹn từ Tầng 2 sang Tầng 4.
+- Thuộc tính:
+  - num_frames: trả về số frame T.
+
+2. CÁC HÀM TIỆN ÍCH PHI TRẠNG THÁI (STATELESS)
+
+normalize_snr_db(snr_db, snr_low_db=0.0, snr_high_db=20.0) -> np.ndarray
+- Chức năng: Chuẩn hóa tuyến tính từng phần SNR (dB) về đoạn [0, 1].
+- Đầu ra: Mảng cùng shape với snr_db, dtype float32.
+
+stable_sigmoid(z) -> np.ndarray
+- Chức năng: Tính 1 / (1 + exp(-z)) ổn định số học cho mọi z thực (không tràn số với |z| lớn, bảo toàn NaN nếu có).
+- Đầu ra: Mảng cùng shape với z, dtype float32.
+
+3. LỚP SigmoidScorer
+
+SigmoidScorer(num_bands=4, config=None, debug=False)
+- Chức năng: Khởi tạo bộ chấm điểm Tầng 3.
+
+score(features: VADFeatures, noise_out: NoiseOutput) -> SigmoidOutput
+- Đầu vào: VADFeatures (từ Tầng 1) và NoiseOutput (từ Tầng 2).
+- Đầu ra: SigmoidOutput.
+
+score_arrays(snr_db, sfm, warmup=None) -> SigmoidOutput
+- Chức năng: Chấm điểm trực tiếp từ các mảng numpy để kiểm thử độc lập Tầng 3.
+- Kiểm tra đầu vào vô điều kiện (production): số chiều, khớp shape (n_bands, T) và (T,), từ chối số phức.
+- Kiểm tra khi debug=True: từ chối NaN/Inf trên snr_db, sfm, warmup và từ chối sfm ngoài [0, 1].
+
+reset() -> None
+- Chức năng: Phương thức đồng bộ giao diện pipeline (Tầng 3 phi trạng thái theo frame nên hoàn toàn chunk-invariant).
+
+4. HỢP ĐỒNG CHUYỂN GIAO SANG TẦNG 4 (VAD/state_machine.py)
+
+- Đầu vào tiêu thụ tại Tầng 4:
+  - `sig_out.score` (shape `(T,)`, float32): Điểm phát hiện mỗi frame để so sánh với ngưỡng `onset_thresh` và `offset_thresh` (hysteresis).
+  - `sig_out.warmup` (shape `(T,)`, bool): Cờ báo frame đang trong giai đoạn khởi tạo nền nhiễu.
+  - `hop_seconds` (float, từ `FeatureExtractor.hop_seconds`, mặc định 0.005 s = 5 ms): Dùng để quy đổi cấu hình thời gian (`onset_ms`, `hangover_ms`, `min_speech_ms`, `min_silence_ms`) sang số frame.
+- Quy tắc xử lý `warmup` tại Tầng 4:
+  - Khi `sig_out.warmup[t] == True`, `sig_out.score[t]` đã được Tầng 3 khóa về `warmup_score = 0.0`.
+  - Tầng 4 KHÔNG được kích hoạt chuyển trạng thái sang `ONSET` hoặc `SPEECH` tại các frame có `warmup[t] == True` (ngay cả khi người dùng cấu hình `warmup_score` khác 0 hoặc `onset_thresh` rất thấp). Trong suốt `warmup[t] == True`, State Machine phải giữ ở trạng thái `SILENCE` và đặt bộ đếm `onset_count = 0`.
+- Yêu cầu bất biến streaming cho Tầng 4:
+  - Danh sách đoạn tiếng nói `[(start_time, end_time), ...]` sau khi chạy qua chuỗi `process_chunk(...)` + `flush()` phải nhất quán với khi chạy nguyên khối.

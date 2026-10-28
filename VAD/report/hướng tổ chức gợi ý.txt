@@ -1,0 +1,36 @@
+VAD/
+├── __init__.py
+│
+├── feature_extraction.py
+│   └── Trích xuất đặc trưng từ Power Spectrogram
+│       - Multi-band Power
+│       - Spectral Flatness (SFM)
+│
+├── noise_estimator.py
+│   └── Ước lượng nền nhiễu thích nghi
+│       - Noise Floor theo từng dải
+│       - EMA nhanh/chậm
+│       - SNR hoặc Band-to-Noise Ratio
+│
+├── sigmoid.py
+│   └── Chấm điểm tiếng nói
+│       - Chuẩn hóa đặc trưng
+│       - Kết hợp trọng số
+│       - Sigmoid Scoring
+│
+├── state_machine.py
+│   └── Quản lý trạng thái VAD
+│       - SILENCE
+│       - ONSET
+│       - SPEECH
+│       - HANGOVER
+│
+└── vad.py
+    └── Điều phối toàn bộ pipeline
+        - Nhận audio chunk
+        - Gọi STFT
+        - Gọi Feature Extraction
+        - Gọi Noise Estimator
+        - Gọi Sigmoid Scoring
+        - Gọi State Machine
+        - Trả về speech segments

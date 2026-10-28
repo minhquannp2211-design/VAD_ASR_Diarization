@@ -1,0 +1,26 @@
+================================================================================
+MULTI-BAND ADAPTIVE VAD PILOT RUN LOG (LAYERS 1-4 FROZEN BASELINE)
+================================================================================
+Timestamp          : 2026-10-27T19:47:42.497055+07:00
+Command Executed   : py "VAD/report/tầng 4/human_annotation_pilot/benchmark_multiband_vs_silero.py"
+Reference Type     : PROVISIONAL_SILERO_PREANNOTATION
+Reference File     : C:\file\VAD_ASR_Diarization\VAD\report\tầng 4\human_annotation_pilot\preannotation_silero.csv
+Run Config ID      : multiband_vad_v1_frozen_defaults(L1:hop=5ms,win=16ms,bands=4|L2:init=40f,snr=6/9dB,confirm=3|L3:w=1,2,2,1,wsfm=2,b=-4|L4:on=0.55/30ms,off=0.35,hang=150ms,min_sp=100ms,min_sil=100ms)
+Completion Status  : SUCCESS (11/11 WAV files processed, 0 runtime errors)
+--------------------------------------------------------------------------------
+[REFERENCE] Không tìm thấy C:\file\VAD_ASR_Diarization\VAD\report\tầng 4\human_annotation_pilot\annotations_human_reviewed.csv. Sử dụng C:\file\VAD_ASR_Diarization\VAD\report\tầng 4\human_annotation_pilot\preannotation_silero.csv làm NHÃN THAM CHIẾU TẠM THỜI (PROVISIONAL SILERO PRE-ANNOTATION).
+[VALIDATION] C:\file\VAD_ASR_Diarization\VAD\report\tầng 4\human_annotation_pilot\preannotation_silero.csv vượt qua pilot_tools.validate_annotations (56 khoảng trên 11 excerpts).
+[OK] E01_stat20_16k     | sr=16000Hz | dur=6.200s | stft_T=1238/1240 | Segs(match/pred/ref)=2/3/2 | Dur(pred/ref)=3.120s/3.416s | Miss= 10.5% | FA=  2.3% | F1= 93.5% | within_dur=True | chunk_inv=True
+[OK] E02_stat20_8k      | sr= 8000Hz | dur=6.000s | stft_T=1198/1200 | Segs(match/pred/ref)=2/2/2 | Dur(pred/ref)=3.930s/3.768s | Miss=  1.2% | FA=  9.4% | F1= 96.7% | within_dur=True | chunk_inv=True
+[OK] E03_stat15_16k     | sr=16000Hz | dur=6.000s | stft_T=1198/1200 | Segs(match/pred/ref)=2/2/2 | Dur(pred/ref)=3.610s/3.800s | Miss=  5.0% | FA=  0.0% | F1= 97.4% | within_dur=True | chunk_inv=True
+[OK] E04_stat15_8k      | sr= 8000Hz | dur=5.700s | stft_T=1138/1140 | Segs(match/pred/ref)=1/3/1 | Dur(pred/ref)=3.655s/4.604s | Miss= 20.6% | FA=  0.0% | F1= 88.5% | within_dur=True | chunk_inv=True
+[OK] E05_stat10_16k     | sr=16000Hz | dur=6.000s | stft_T=1198/1200 | Segs(match/pred/ref)=2/5/2 | Dur(pred/ref)=3.165s/4.746s | Miss= 33.6% | FA=  1.2% | F1= 79.6% | within_dur=True | chunk_inv=True
+[OK] E06_stat10_8k      | sr= 8000Hz | dur=7.300s | stft_T=1458/1460 | Segs(match/pred/ref)=3/6/3 | Dur(pred/ref)=3.110s/5.300s | Miss= 41.3% | FA=  0.0% | F1= 74.0% | within_dur=True | chunk_inv=True
+[OK] E07_step_up_16k    | sr=16000Hz | dur=7.200s | stft_T=1438/1440 | Segs(match/pred/ref)=2/2/3 | Dur(pred/ref)=5.365s/3.508s | Miss=  3.8% | FA= 53.9% | F1= 76.1% | within_dur=True | chunk_inv=True
+[OK] E08_step_down_16k  | sr=16000Hz | dur=6.500s | stft_T=1298/1300 | Segs(match/pred/ref)=2/2/2 | Dur(pred/ref)=2.770s/4.440s | Miss= 37.6% | FA=  0.0% | F1= 76.8% | within_dur=True | chunk_inv=True
+[OK] E09_step_up_8k     | sr= 8000Hz | dur=7.200s | stft_T=1438/1440 | Segs(match/pred/ref)=2/2/2 | Dur(pred/ref)=5.575s/4.280s | Miss=  0.2% | FA= 44.7% | F1= 86.7% | within_dur=True | chunk_inv=True
+[OK] E10_start_16k      | sr=16000Hz | dur=5.500s | stft_T=1098/1100 | Segs(match/pred/ref)=2/2/2 | Dur(pred/ref)=2.435s/3.352s | Miss= 27.4% | FA=  0.0% | F1= 84.1% | within_dur=True | chunk_inv=True
+[OK] E11_start_8k       | sr= 8000Hz | dur=5.500s | stft_T=1098/1100 | Segs(match/pred/ref)=2/3/2 | Dur(pred/ref)=2.065s/3.384s | Miss= 39.0% | FA=  0.0% | F1= 75.8% | within_dur=True | chunk_inv=True
+--------------------------------------------------------------------------------
+POOLED AGGREGATE (11 files, 69.100s): TP=7043, FP=717, FN=1877, TN=4183 | Prec=90.8%, Rec=79.0%, F1=84.4%, Miss=21.0%, FA=14.6% | Segs(match/pred/ref)=22/32/23
+================================================================================

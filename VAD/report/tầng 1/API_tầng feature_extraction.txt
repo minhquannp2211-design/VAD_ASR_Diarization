@@ -1,0 +1,98 @@
+VAD/feature_extraction.py — TRA CỨU NHANH CÁC HÀM CHÍNH
+
+1. CÁC HÀM TRÍCH XUẤT ĐẶC TRƯNG
+
+bin_frequencies(n_fft, sample_rate)
+- Chức năng: Tính tần số Hz tương ứng với từng bin FFT.
+- Đầu vào: n_fft, sample_rate.
+- Đầu ra: Mảng tần số có shape (n_bins,).
+
+build_band_masks(n_fft, sample_rate, bands_hz)
+- Chức năng: Tạo ma trận trọng số để chia phổ thành các dải tần.
+- Đầu vào: Cấu hình FFT, sample rate và danh sách dải tần.
+- Đầu ra: Ma trận trọng số có shape (n_bands, n_bins).
+- Mặc định: 4 dải tần 80–300 Hz, 300–1000 Hz, 1000–2000 Hz và 2000–4000 Hz.
+
+compute_band_power(spec, band_weights)
+- Chức năng: Tính công suất trung bình trên mỗi bin của từng dải tần.
+- Đầu vào: Power Spectrogram shape (n_bins, T) và ma trận trọng số.
+- Đầu ra: Ma trận band_power shape (n_bands, T), dtype float32.
+- Lưu ý: Đây là công suất trung bình trên mỗi bin, không phải tổng công suất của dải.
+
+compute_sfm(spec, bin_mask)
+- Chức năng: Tính Spectral Flatness Measure (SFM) cho từng frame.
+- Đầu vào: Power Spectrogram và mặt nạ chọn các bin tần số.
+- Đầu ra: Vector SFM shape (T,), dtype float32; giá trị được giới hạn trong [0, 1].
+
+2. LỚP FeatureExtractor
+
+FeatureExtractor(...)
+- Chức năng: Khởi tạo bộ trích xuất đặc trưng, cấu hình sample rate, dải tần, vùng tính SFM và bộ STFT.
+- Nếu không truyền đối tượng STFT, lớp tự tạo bộ xử lý bằng create_vad_streamer(sample_rate).
+
+extract(spec)
+- Chức năng: Trích xuất đặc trưng từ Power Spectrogram đã có sẵn.
+- Đầu vào: spec có shape (n_bins, T); không nhận waveform.
+- Đầu ra: Đối tượng VADFeatures gồm:
+  - band_power: shape (4, T), dtype float32.
+  - sfm: shape (T,), dtype float32.
+
+process_chunk(audio)
+- Chức năng: Nhận một chunk waveform, gọi StreamingSTFT.process_chunk() nội bộ rồi trích xuất đặc trưng.
+- Đầu vào: Một chunk âm thanh mono.
+- Đầu ra: VADFeatures của các frame được tạo từ chunk hiện tại.
+- Lưu ý: Có thể trả về đặc trưng rỗng nếu STFT chưa có đủ mẫu để tạo frame.
+
+flush()
+- Chức năng: Gọi StreamingSTFT.flush() để xử lý phần cuối của luồng theo chính sách padding của STFT, sau đó trích xuất đặc trưng.
+- Đầu ra: VADFeatures; có thể rỗng nếu không còn frame cần xử lý.
+
+reset()
+- Chức năng: Xóa trạng thái streaming của STFT để bắt đầu phiên âm thanh mới.
+
+num_bands
+- Chức năng: Thuộc tính trả về số dải tần đang sử dụng; mặc định là 4.
+
+hop_seconds
+- Chức năng: Thuộc tính trả về khoảng thời gian giữa hai frame liên tiếp.
+- Công thức: hop_length / sample_rate.
+- Mặc định ở 16 kHz với hop_length 80 mẫu: 0,005 giây (5 ms).
+
+3. CÁC HÀM NỘI BỘ
+
+_validate_freq_range(rng, sample_rate, name="band")
+- Chức năng: Kiểm tra khoảng tần số hợp lệ, với điều kiện 0 <= lo < hi <= Nyquist.
+- Được dùng cho các dải tần và vùng tần số tính SFM.
+
+_check_spec(spec, n_bins, debug=False)
+- Chức năng: Kiểm tra Power Spectrogram là dữ liệu thực, có 2 chiều và đúng số bin; chuyển kiểu sang float32.
+- Khi debug=True, kiểm tra thêm NaN, Inf và giá trị âm.
+
+4. VÍ DỤ SỬ DỤNG
+
+Trường hợp A: Đã có Power Spectrogram
+
+    extractor = FeatureExtractor(sample_rate=16000)
+    features = extractor.extract(power_spec)
+
+    band_power = features.band_power  # shape (4, T)
+    sfm = features.sfm                # shape (T,)
+
+Trường hợp B: Xử lý streaming
+
+    extractor = FeatureExtractor(sample_rate=16000)
+    features = extractor.process_chunk(audio_chunk)
+
+    # Khi kết thúc luồng
+    last_features = extractor.flush()
+
+    # Bắt đầu phiên mới
+    extractor.reset()
+
+5. GHI CHÚ CHO TẦNG 2 — noise_estimator.py
+
+Tầng 2 chủ yếu sử dụng features.band_power và features.sfm nhận từ FeatureExtractor.process_chunk().
+
+Khi ước lượng noise floor, phải dùng cùng định nghĩa công suất trung bình trên mỗi bin như band_power; không so sánh công suất trung bình của tín hiệu với tổng công suất nhiễu.
+
+Voicing Energy Ratio hiện chưa được triển khai trong Tầng 1.

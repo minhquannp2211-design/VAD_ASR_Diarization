@@ -1,0 +1,76 @@
+BÁO CÁO AUDIT C — NATURAL NOISE-LEVEL TRANSITIONS
+Khảo sát chuyển mức công suất nhiễu tự nhiên trong các bản ghi gán nhãn -N
+Ngày lập: 24/10/2026
+Phạm vi: Toàn bộ bản ghi có nhãn -N thuần túy trong transcript; không sửa mã nguồn.
+
+1. MỤC TIÊU
+
+Đánh giá xem nguồn nhiễu thuần FPT có đủ thời lượng và có chứa chuyển mức nhiễu duy trì đủ lâu để kiểm chứng cơ chế freeze/recovery của NoiseEstimator hay không.
+
+Các mốc tham chiếu:
+- hop = 5 ms/frame.
+- max_freeze_frames = 500 frame (2,5 s).
+- recover_frames = 100 frame (0,5 s).
+- Chu trình đóng băng và phục hồi đầy đủ có thể cần xấp xỉ 3,0 s.
+
+2. TỔNG QUAN DỮ LIỆU
+
+Trong 25.921 bản ghi hợp lệ theo lần quét transcript:
+- 4 bản ghi được gán nhãn -N thuần túy.
+- 430 bản ghi có -N xen kẽ nội dung lời thoại.
+- Kiểm tra tín hiệu cho thấy một trong 4 file -N thuần đáng ngờ vì có đặc trưng gần giọng nói/hữu thanh; do đó không nên mặc định cả 4 file đều là noise-only ground truth đáng tin cậy.
+- Ba nguồn nhiễu được dùng trong benchmark tổng hợp trước đó gồm các file 008210, 010753 và 011841.
+
+Với chỉ ba bản ghi nhiễu thuần có vẻ phù hợp, phạm vi dữ liệu và thời lượng quá nhỏ để đại diện đầy đủ cho biến động nhiễu dài hạn trong môi trường tự nhiên.
+
+3. KẾT QUẢ TỪNG BẢN GHI
+
+A. FPTOpenSpeechData_Set001_V0.1_008210.mp3
+- Thời lượng: 3,024 s; khoảng 602 frame.
+- Khoảng 22 frame đầu (xấp xỉ 110 ms) bị mute số học/đệm MP3, gần -80 dB.
+- Từ 0,25–1,75 s: công suất nền chủ yếu nằm khoảng -5,1 đến -3,1 dB, kéo dài khoảng 1,50 s.
+- Từ 1,75–2,00 s: xuất hiện xung năng lượng ngắn; total_db tăng đến +8,5 dB, tức khoảng +11,6 dB so với nền trước đó; B0 tăng khoảng +14,4 dB.
+- Sau 2,00 s, công suất trở về khoảng -3,1 đến -4,4 dB trong đoạn được khảo sát.
+- NoiseEstimator báo stuck=True khoảng 2,70 s theo log quét. Đây không thể được diễn giải tự động là đã quan sát thấy một bước nhiễu tăng duy trì: phần đầu file có padding số 0 có thể làm lệch median warm-up.
+
+B. FPTOpenSpeechData_Set001_V0.1_010753.mp3
+- Thời lượng: 1,560 s; khoảng 309 frame.
+- Trong 0,00–0,50 s, công suất tổng khoảng -12,8 đến -14,9 dB.
+- Từ khoảng 0,50 s đến 1,00 s, công suất tăng dần; nửa sau có mức cao hơn khoảng +8,5 đến +10,4 dB so với đoạn đầu theo phép đo đã báo cáo, với công suất dao động giữa -2,4, -8,3 và -4,2 dB.
+- Mức cao hơn kéo dài khoảng 0,75–0,90 s trước khi file kết thúc.
+- Toàn file ngắn hơn 500 frame (2,5 s), vì vậy không đủ thời gian để quan sát trọn pha freeze và recovery theo cấu hình hiện tại.
+
+C. FPTOpenSpeechData_Set001_V0.1_011841.mp3
+- Thời lượng: 3,720 s; khoảng 741 frame.
+- Khoảng 22 frame đầu (xấp xỉ 110 ms) có padding MP3 gần -80 dB.
+- Từ 0,25–3,00 s: nền nhiễu tương đối phẳng, khoảng -5,2 đến -2,4 dB trong 2,75 s.
+- Từ 3,00–3,25 s: xuất hiện xung ngắn +3,8 dB, khoảng +8,1 dB so với nền ngay trước đó.
+- Từ 3,25 s đến hết file: mức công suất trở về vùng nền cũ, khoảng -2,4 đến -4,7 dB.
+- Không thấy một mức nhiễu mới duy trì lâu sau xung.
+
+D. FPTOpenSpeechData_Set001_V0.1_011477.mp3
+- Thời lượng: 4,440 s; khoảng 885 frame.
+- Transcript gán nhãn -N, nhưng SFM trung vị trong 0,25–4,25 s được báo cáo là 0,0008; khoảng giá trị 0,0000–0,0098.
+- Có các đoạn công suất biến thiên mạnh, bao gồm đoạn tín hiệu xuống rất thấp và đoạn trở lại vùng -3,1 đến -2,2 dB.
+- Các thống kê này khiến file đáng nghi là có tín hiệu giọng nói/hữu thanh hoặc không phù hợp làm mẫu noise-only thuần túy.
+- Chưa có xác nhận bằng người nghe độc lập; vì vậy kết luận chính xác là SUSPECTED LABEL MISMATCH, không khẳng định tuyệt đối file chắc chắn bị gán nhãn sai.
+
+4. KẾT LUẬN THEO TIÊU CHÍ
+
+Phân loại: NOT FOUND UNDER THE STATED SCAN CRITERIA; đồng thời INCONCLUSIVE đối với mức độ đại diện cho nhiễu tự nhiên dài hạn.
+
+- Trong ba file nhiễu thuần đáng tin cậy hơn, các biến động công suất quan sát được chủ yếu là xung ngắn khoảng 250 ms hoặc đoạn tăng cuối file dưới 1 s.
+- Không có bản ghi đủ dài để kiểm tra một mức nhiễu mới ổn định và kéo dài qua toàn bộ chu kỳ 2,5 s freeze + 0,5 s recovery.
+- Dữ liệu hiện có không đủ để kết luận NoiseEstimator hoạt động tốt hay kém trên mọi chuyển mức nhiễu tự nhiên kéo dài.
+- Kịch bản tổng hợp step_up_down vẫn có giá trị stress test vì mức thay đổi và thời gian duy trì được kiểm soát, nhưng phải ghi rõ đó là tín hiệu hỗn hợp được dựng từ nguồn speech/noise, không phải sự kiện tự nhiên nguyên vẹn trong một file FPT.
+
+5. HẠN CHẾ VÀ ĐỀ XUẤT DỮ LIỆU
+
+- Chỉ có ba nguồn noise-only ngắn đáng tin cậy; không nên suy rộng thống kê của chúng cho phòng thu, đường phố, quạt, điều hòa hoặc các môi trường nhiễu khác.
+- Padding MP3 phải được loại khỏi ước lượng tham chiếu và cần ghi nhận rõ các khoảng im lặng số học đầu file.
+- File 011477 nên được nghe/kiểm tra thủ công trước khi sử dụng làm ground truth nhiễu thuần.
+- Khi có nguồn nhiễu dài hơn, nên thêm các bản ghi có thay đổi mức nhiễu duy trì ít nhất 3–5 s và một số chuyển mức nhiều bước.
+
+6. KẾT LUẬN CUỐI
+
+Dữ liệu FPT hiện có không chứa một tình huống chuyển mức nhiễu tự nhiên đủ dài để kiểm chứng toàn bộ cơ chế freeze/recovery theo ngưỡng đang dùng. Kết quả này thể hiện giới hạn của dữ liệu, không phải bằng chứng thuật toán không thể xử lý tình huống đó.

@@ -1,5 +1,42 @@
-Yêu cầu về STFT trong các mô hình:
-1/ ASR 
-offline : đòi hỏi spectrogram căn centered và đệm đối xứng để các khung thời gian khớp chính xác với nhãn thực tế
-streaming : không được phép đệm dữ liệu tương lai ( vì không có data, xử lí theo thời gian thực ), chỉ được nhìn về quá khứ và hiện tại
-2/ Diarization 
+Trong hệ thống nhận dạng tiếng nói, âm thanh đầu vào ban đầu là một chuỗi tín hiệu theo thời gian. Ví dụ, ở sample rate 16.000 Hz, mỗi giây âm thanh có 16.000 mẫu dữ liệu.
+
+Tuy nhiên, các module phía sau có những nhu cầu khác nhau:
+- VAD (Voice Activity Detection): cần xác định đoạn nào có tiếng nói và đoạn nào là khoảng lặng.
+- ASR (Automatic Speech Recognition): cần đặc trưng âm thanh để chuyển lời nói thành văn bản.
+- Diarization: cần đặc trưng để phân tích người nói và so sánh các đoạn âm thanh.
+- DTW (Dynamic Time Warping): có thể sử dụng đặc trưng theo thời gian để căn chỉnh và so sánh các chuỗi tín hiệu có độ dài khác nhau.
+Nếu mỗi module tự xử lý STFT riêng, hệ thống dễ phát sinh nhiều bản triển khai trùng lặp, khác nhau về cách chia frame, hàm cửa sổ, kiểu dữ liệu và cách xử lý biên tín hiệu. Việc bảo trì và đảm bảo tính nhất quán khi tối ưu cũng trở nên khó khăn.
+
+Vì vậy, Dictionary/STFT.py được xây dựng với mục tiêu trở thành bộ STFT custom dùng chung duy nhất, chịu trách nhiệm chuyển tín hiệu âm thanh sang miền thời gian–tần số. Các module VAD, ASR và Diarization chỉ gọi lại bộ xử lý này rồi tiếp tục thực hiện nhiệm vụ riêng.
+
+Mô hình tổng thể ( ý tưởng ban đầu ) :
+_get_cached_window() : việc tạo hàm hann cho mọi lần sử dụng stft khá tốn và hầu như cùng tính chất
+-> lưu lại hàm cửa sổ ( bằng hàm functools @lru_cache có sẵn )
+(Lưu ý kỹ thuật : Đặt writeable=False để hạn chế việc vô tình sửa cửa sổ đang được dùng chung.)
+
+_core_stft_optimized :
+1 / chuẩn hóa dữ liệu
+n_fft > 0.
+hop_length > 0.
+win_length > 0.
+win_length <= n_fft.
+output_type thuộc các giá trị được hỗ trợ.
+Audio là mảng một chiều theo thiết kế hiện tại.
+2/ chia frame ( sliding window )
+3/ thực hiện stft
+4/ output : complex(complex64), magnitude(float32), power(float32)
+Streaming STFT
+vấn đề:
+Nếu xử lý mỗi chunk độc lập, các frame nằm ở ranh giới giữa hai chunk có thể bị bỏ sót. Điều này ảnh hưởng tới tính liên tục của phổ và các quyết định VAD/ASR sau đó.
+Mô hình (processing):
+Chuẩn hóa chunk về float32 và kiểm tra số chiều.
+Nối chunk mới với phần dư của chunk trước nếu có.
+Xác định số frame đầy đủ có thể xử lý bằng n_fft và hop_length.
+Giữ lại những mẫu cần thiết cho các frame tiếp theo.
+Gọi _core_stft_optimized() để tính STFT cho phần dữ liệu đủ điều kiện.
+ý nghĩa : Điều này vừa bảo đảm tính đúng đắn của streaming, vừa tránh việc một buffer nhỏ vô tình giữ lại toàn bộ vùng nhớ của chunk lớn.
+
+flush() : xử lí phần cuối khi mic dừng / kết thúc câu
+Phần overlap đã được frame trước xử lý.
+Phần mẫu mới chưa được frame nào bao phủ.
+reset() : reset quy trình để tái sử dụng mô hình cho âm thanh mới

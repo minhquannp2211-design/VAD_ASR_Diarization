@@ -1,0 +1,64 @@
+BÁO CÁO AUDIT B — HIGH-SFM, STABLE-POWER SPEECH
+Kiểm tra nguy cơ tích lũy _stable trong tiếng nói có SFM cao và công suất ổn định
+Ngày lập: 24/10/2026
+Phạm vi: 200 file tiếng nói FPT lấy mẫu cách đều; giải mã 16 kHz mono; không sửa mã nguồn.
+
+1. MỤC TIÊU
+
+Xác định trong tập tiếng nói hiện có có đoạn nào duy trì đồng thời đặc trưng SFM cao và công suất từng băng ổn định đủ lâu để tác động đến logic freeze/recovery của NoiseEstimator hay không.
+
+Các mốc cấu hình tham chiếu:
+- hop = 5 ms/frame.
+- max_freeze_frames = 500 frame (2,5 s).
+- recover_frames = 100 frame (0,5 s).
+- recover_stable_db = 3,0 dB.
+- recover_ref_alpha = 0,05.
+- sfm_thresh hiện tại = 0,15; giá trị trước thay đổi = 0,50.
+
+2. PHƯƠNG PHÁP QUÉT
+
+- Mẫu gồm 200 file chọn bằng np.linspace phân bố cách đều trong 25.917 file tiếng nói.
+- Định nghĩa frame tiếng nói ứng viên: total_db[t] >= max(p10_db + 10 dB, p95_db - 25 dB) và dyn_db >= 12 dB.
+- Với mỗi băng b, tìm chuỗi liên tiếp thỏa cả hai điều kiện: (a) sfm[t] > sfm_thresh; (b) công suất băng nằm trong ±3 dB quanh mức tham chiếu EMA ngắn hạn _ref (recover_ref_alpha = 0,05).
+- Mô phỏng bộ đếm ổn định: +1 khi đạt điều kiện và -2 khi trượt. Để kiểm tra giới hạn bảo thủ, phép quét còn xem xét trường hợp giả định băng đã stuck=True ngay từ đầu đoạn tiếng nói.
+- Kiểm tra riêng với sfm_thresh = 0,15 và 0,50.
+
+Đây là phép quét đặc trưng/điều kiện vận hành, không phải chạy full VAD với nhãn âm vị thủ công.
+
+3. KẾT QUẢ TỔNG QUAN
+
+Với sfm_thresh = 0,15:
+- Độ dài chuỗi thỏa điều kiện lớn nhất theo [B0, B1, B2, B3]: [38, 32, 22, 26] frame, tương đương [190, 160, 110, 130] ms.
+- Giá trị _stable cực đại theo [B0, B1, B2, B3]: [38, 32, 22, 32] frame (tối đa 190 ms).
+- Có 18 đoạn dài ít nhất 20 frame (>=100 ms), tập trung trong 3 file: FPTOpenSpeechData_Set001_V0.1_010550.mp3, FPTOpenSpeechData_Set001_V0.1_006642.mp3, FPTOpenSpeechData_Set001_V0.1_008987.mp3.
+- Không có đoạn nào đạt 100 frame (500 ms), là ngưỡng recover_frames.
+- Không có chuỗi nào gần 500 frame (2,5 s), là mốc max_freeze_frames.
+
+Với sfm_thresh = 0,50:
+- Độ dài chuỗi liên tiếp tối đa theo [B0, B1, B2, B3]: [2, 2, 1, 1] frame, tương đương 5–10 ms.
+- Theo tiêu chí quét này, SFM >0,50 hầu như không duy trì đủ lâu để hình thành chuỗi ổn định.
+
+4. CÁC ĐOẠN DÀI NHẤT ĐÃ TÌM THẤY
+
+File FPTOpenSpeechData_Set001_V0.1_010550.mp3:
+- B0: 38 frame, 190 ms, 2,800–2,990 s; mean SFM = 0,2501; mean power = +1,27 dB; std = 0,56 dB.
+- B1: 32 frame, 160 ms, 2,830–2,990 s; mean SFM = 0,2553; mean power = +0,96 dB; std = 0,41 dB.
+- B3: 26 frame, 130 ms, 2,245–2,375 s; mean SFM = 0,2752; mean power = -13,14 dB; std = 1,02 dB; _stable tối đa được báo cáo là 32.
+- B2: 22 frame, 110 ms, 0,520–0,630 s; mean SFM = 0,1979; mean power = -17,33 dB; std = 1,65 dB.
+
+File FPTOpenSpeechData_Set001_V0.1_006642.mp3:
+- B0: chuỗi 33 frame (165 ms), 0,875–1,040 s, mean SFM = 0,3009, std = 0,58 dB.
+- B0: chuỗi khác 27 frame (135 ms), 1,190–1,325 s, mean SFM = 0,3270, std = 0,24 dB.
+
+5. DIỄN GIẢI VÀ HẠN CHẾ
+
+- Trong mẫu 200 file và theo tiêu chí vận hành đã chọn, các đoạn tiếng nói có SFM >0,15 và công suất ổn định ngắn hơn nhiều so với 500 frame freeze và 100 frame recovery.
+- Điều này cho thấy chưa tìm thấy ví dụ tiếng nói thực trong mẫu đủ dài để tự nó đi qua cả chu trình freeze/recovery theo các mốc trên.
+- Không được diễn giải “không tìm thấy trong 200 file” thành “không thể xảy ra trong toàn bộ corpus hoặc ngoài đời”. Đây là kết quả hữu hạn theo mẫu và tiêu chí.
+- Audit này không loại trừ nguy cơ cập nhật noise floor từ tiếng nói qua nhánh strong. Nhánh strong có điều kiện SNR riêng và, theo chẩn đoán benchmark trước đó, không bị SFM chặn; vì thế một bài audit chỉ theo chuỗi SFM cao không bao phủ cơ chế rò rỉ strong khi tiếng nói có SFM thấp.
+
+6. KẾT LUẬN
+
+Phân loại: NOT FOUND UNDER THE STATED SCAN CRITERIA.
+
+Không có đoạn nào trong mẫu đạt ngưỡng 100 frame của recover_frames; độ dài tối đa quan sát được là 38 frame. Kết quả hỗ trợ việc dùng test tổng hợp để kiểm tra tình huống đối kháng freeze/recovery, đồng thời giữ riêng một nhánh chẩn đoán khác cho hiện tượng strong update khi tiếng nói vẫn hiện diện.

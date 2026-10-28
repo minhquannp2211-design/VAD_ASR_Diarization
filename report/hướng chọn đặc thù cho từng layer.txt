@@ -1,0 +1,12 @@
+hướng chọn mô hình đặc thù cho từng module VAD_ASR_Diarization
+dựa vào preset đã viết trong STFT. 
+
+VAD : Multi-band Adaptive Sigmoid VAD
+dựa vào thông số :
+Thông số 			Giá trị /16khz   Ý nghĩa
+win_length	               256 mẫu = 16 ms	Phân tích âm thanh trong cửa sổ ngắn
+hop_length	                80 mẫu = 5 ms	Cập nhật đặc trưng mỗi 5 ms
+n_fft	256	               129 bin tần số
+Độ cách nhau giữa các bin           62,5 Hz	Đủ để chia các dải tần tương đối rộng
+output_type	                     power	Thuận tiện tính năng lượng từng dải
+thông tin phổ thay đổi nhanh theo thời gian. Các phương pháp VAD dựa trên năng lượng đa dải

@@ -1,0 +1,54 @@
+1. VAD Streaming
+
+Hàm create_vad_streamer()
+
+Cửa sổ:16 ms
+Hop length: 5 ms
+n_fft: 256
+Đầu ra: Power
+
+Mục đích: Cung cấp phổ công suất theo các frame cách nhau 5 ms, phù hợp để VAD theo dõi sự thay đổi của tín hiệu trong luồng thời gian thực.
+
+Đầu ra có 129 bin tần số. Preset sử dụng StreamingSTFT, nên có buffer giữa các chunk và hỗ trợ flush().
+-----------------------------------
+2. ASR Streaming
+
+Hàm create_asr_streamer()
+
+Cửa sổ:25 ms
+Hop length:10 ms
+n_fft: 512
+Đầu ra:Power
+
+Mục đích: Tính phổ công suất liên tục cho pipeline nhận dạng lời nói theo thời gian thực.
+
+Đầu ra có 257 bin tần số. Bộ xử lý duy trì phần dữ liệu overlap qua các chunk để không bỏ sót frame ở biên.
+
+----------------------------------
+3. ASR Patch Processing (Batch/Offline)
+
+Hàm stft_for_asr_patch()
+
+Cửa sổ: 25 ms
+Hop length: 10 ms
+center: True
+Padding: Reflect
+
+Mục đích: Xử lý một đoạn hoặc file âm thanh hoàn chỉnh trong một lần gọi, thay vì duy trì state qua từng chunk.
+
+Hàm sử dụng power và mặc định workers=-1. Với center=True, tín hiệu được padding hai bên bằng chế độ reflect để căn chỉnh frame theo quy ước của nhánh offline.
+----------------------------------
+4. Diarization / DTW
+
+Hàm stft_for_diarization()
+
+Cửa sổ: 32 ms
+Hop length: 10 ms
+n_fft mặc định: 512
+Đầu ra mặc định: Magnitude
+
+Mục đích: Cung cấp phổ biên độ cho các bước phân tích và so sánh đặc trưng âm thanh.
+
+Hàm dùng center=False, mặc định xử lý offline với workers=-1. Có thể chọn power bằng return_magnitude=False.
+
+Với sample rate 16 kHz và n_fft=512, 512 mẫu tương ứng 32 ms. Cấu hình này có 257 bin tần số.

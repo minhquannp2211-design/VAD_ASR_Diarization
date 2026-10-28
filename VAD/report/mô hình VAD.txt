@@ -1,0 +1,72 @@
+dựa vào preset đã viết cho STFT.py , hướng Multi-band Adaptive Sigmoid VAD
+KIẾN TRÚC VAD: MULTI-BAND ADAPTIVE SIGMOID VAD
+
+STFT Power Spectrogram (129, T)
+Dtype: float32 | VAD preset | Hop length: 5 ms
+        │
+        ▼
+┌──────────────────────────────────────────────────────────────┐
+│ TẦNG 1: TRÍCH XUẤT ĐẶC TRƯNG (FEATURE EXTRACTION)            │
+│                                                              │
+│  1. Sub-band Power: năng lượng của 4 dải tần trong           │
+│     khoảng 80–4000 Hz                                        │
+│  2. Spectral Flatness (SFM): đặc trưng độ phẳng phổ          │
+│  3. Voicing Energy Ratio: để dành cho phiên bản sau,         │
+│     chỉ bổ sung sau khi được kiểm chứng                      │
+└──────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌──────────────────────────────────────────────────────────────┐
+│ TẦNG 2: ƯỚC LƯỢNG NỀN NHIỄU THÍCH NGHI                       │
+│     (ADAPTIVE NOISE ESTIMATION)                              │
+│                                                              │
+│  • Duy trì noise floor riêng cho từng dải tần                │
+│  • Cập nhật nền nhiễu bằng EMA thích nghi hai tốc độ         │
+│  • Ước lượng SNR theo từng dải tần                           │
+│  • Hạn chế cập nhật noise floor ở các frame có tiếng nói     │
+└──────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌──────────────────────────────────────────────────────────────┐
+│ TẦNG 3: ADAPTIVE SIGMOID SCORING                             │
+│                                                              │
+│  • Chuẩn hóa hoặc giới hạn SNR trước khi kết hợp đặc trưng   │
+│  • Tính điểm kết hợp:                                        │
+│                                                              │
+│      z(t) = b + Σ[j=1..4] w[j] · SNR_norm[j](t)              │
+│                  + w_f · (1 − SFM(t))                        │
+│                                                              │
+│      p(t) = 1 / (1 + exp(−z(t)))                             │
+│                                                              │
+│  • Hiệu chỉnh trọng số và ngưỡng bằng dữ liệu thử nghiệm     │
+│  • p(t) là điểm số trong khoảng (0, 1), không mặc nhiên      │
+│    là xác suất đã được hiệu chỉnh                            │
+└──────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌──────────────────────────────────────────────────────────────┐
+│ TẦNG 4: VAD STATE MACHINE & POST-PROCESSING                  │
+│                                                              │
+│  SILENCE → ONSET → SPEECH → HANGOVER → SILENCE               │
+│                                                              │
+│  • Ngưỡng bật/tắt để tránh trạng thái dao động liên tục      │
+│  • Xác nhận onset và duy trì hangover                        │
+│  • Nối khoảng lặng ngắn và loại bỏ đoạn tiếng nói quá ngắn   │
+│  • Duy trì trạng thái xuyên suốt các chunk streaming         │
+└──────────────────────────────────────────────────────────────┘
+        │
+        ▼
+┌──────────────────────────────────────────────────────────────┐
+│ OUTPUT: SPEECH SEGMENTS                                      │
+│                                                              │
+│  Danh sách đoạn tiếng nói: [(start_time, end_time), ...]     │
+│  Chuyển các đoạn được phát hiện sang ASR hoặc Diarization    │
+└──────────────────────────────────────────────────────────────┘
+
+GHI CHÚ:
+- Ở sample rate 16 kHz, STFT 256 điểm có 129 bin tần số; khoảng
+  cách giữa các bin là 62,5 Hz.
+- Các dải tần phải được ánh xạ theo tần số thực tế của từng bin.
+- Phiên bản đầu tiên dùng Sub-band Power + SFM + Adaptive Noise/SNR
+  + Sigmoid + State Machine. Chỉ thêm Voicing Energy Ratio sau khi
+  định nghĩa rõ cách tính và chứng minh được lợi ích qua kiểm thử.

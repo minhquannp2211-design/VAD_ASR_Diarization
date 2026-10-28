@@ -1,0 +1,56 @@
+BÁO CÁO THỰC THI 01 — XÂY DỰNG TẦNG NOISE_ESTIMATOR
+Ngày: 24/10/2026
+Phạm vi: Tầng 2 của pipeline VAD
+
+1. MÔ HÌNH VÀ TÍNH NĂNG
+
+NoiseEstimator là bộ ước lượng nền nhiễu thích nghi theo 4 băng tần, nhận đặc trưng STFT do FeatureExtractor cung cấp. Thiết kế được ghi nhận trong phiên gồm:
+- Khởi tạo nền bằng median trong 40 frame đầu (hop 5 ms, xấp xỉ 200 ms).
+- EMA hai tốc độ: alpha_fast = 0,15 và alpha_slow = 0,01.
+- Phân loại frame qua các ngưỡng SNR; nhánh strong cần xác nhận liên tiếp 3 frame.
+- Theo dõi trạng thái đóng băng (max_freeze_frames = 500) và điều kiện phục hồi bằng bộ đếm ổn định (recover_frames = 100).
+- Xuất noise_floor, SNR theo băng, update_mask và cờ warm-up/trạng thái theo API hiện tại.
+
+2. NHỮNG VIỆC ĐÃ THỰC HIỆN
+
+Theo diff và log do agent báo cáo:
+- Hạ sfm_thresh từ 0,50 xuống 0,15.
+- Thay cách reset _stable đột ngột bằng bộ đếm có suy hao: tăng 1 khi frame đạt điều kiện ổn định, giảm 2 khi không đạt.
+- Bổ sung test hồi quy test_noise_step_up_recovers_on_colored_noise_with_realistic_sfm.
+- Bộ test được báo cáo đạt 107/107: 18 test feature extraction, 23 test noise estimator và 66 test STFT.
+
+3. KẾT QUẢ ĐO TRÊN BENCHMARK
+
+Kịch bản step_up_down, seed 100:
+
+16 kHz:
+- B0 update rate trong 12–24 s tăng từ 0,0% lên 79,76%.
+- B0 median absolute noise-floor error giảm từ 4,45 dB xuống 2,32 dB.
+- Raw False Alarm giảm từ 36,87% xuống 18,27%.
+- Raw Miss Rate tăng từ 7,52% lên 21,55%.
+- Số đoạn khớp tăng từ 8/12 lên 11/12.
+
+8 kHz:
+- B0 update rate tăng từ 0,0% lên 81,01%.
+- B0 floor error giảm từ 5,13 dB xuống 2,37 dB.
+- Raw False Alarm giảm từ 48,6% xuống 21,77%.
+- Số đoạn khớp tăng từ 6/12 lên 10/12.
+
+Trong cửa sổ nhiễu cao [23,0 s, 24,0 s), B0 floor tại 23,5 s đạt 2,331712; mean = 2,373470, median = 2,331712. Median raw noise power là 2,241875 theo số liệu đo.
+
+4. QUÁ TRÌNH VÀ LÝ DO THỰC HIỆN
+
+Ban đầu Băng 0 bị kẹt trong kịch bản nhiễu tăng bậc: update rate bằng 0%, floor giữ nguyên quanh 0,0741 dù nhiễu đã tăng đáng kể. Hậu quả là estimator đánh giá nền thấp hơn thực tế và nhiều frame nhiễu bị báo nhầm thành tiếng nói.
+
+Nhóm thực hiện đã kiểm tra đặc trưng nhiễu thực thay vì tiếp tục giả định nhiễu gần trắng. SFM của nguồn nhiễu thực thường thấp hơn ngưỡng 0,50, khiến điều kiện cập nhật và đếm ổn định không phù hợp với dữ liệu đang thử. Vì vậy, ngưỡng SFM được giảm và _stable được đổi sang cơ chế tích lũy có suy hao. Sau sửa, Băng 0 theo kịp mức nhiễu trong bài stress test và False Alarm giảm rõ rệt.
+
+Tuy nhiên, chất lượng phát hiện tiếng nói không hoàn toàn giữ nguyên. Ở step_up_down 16 kHz, Miss Rate tăng từ 7,52% lên 21,55%. Chẩn đoán đối chứng báo cáo rằng ngay cả noise-floor reference lý tưởng cũng tạo Miss Rate đáng kể ở đoạn SNR danh nghĩa +5 dB khi detector vẫn dùng ngưỡng 9 dB; estimator chạy trên hỗn hợp gây thêm sai sót do speech contamination. Cụ thể, nhánh recover không kích hoạt trong benchmark step_up_down; nhánh strong mới là nguồn chính của các lần cập nhật trên frame có tiếng nói. Do đó, đây là cải thiện có điều kiện, chưa phải xác nhận Tầng 2 hoàn chỉnh.
+
+5. TRẠNG THÁI BÀN GIAO
+
+- Đã xử lý được hiện tượng B0 kẹt trong kịch bản stress test.
+- Test suite được báo cáo pass 107/107.
+- Chưa đóng đánh giá tổng thể do Miss Rate tăng và còn nguy cơ speech contamination qua strong.
+- Bước tiếp theo là chẩn đoán riêng nhánh strong và đánh giá ảnh hưởng đến noise floor trên frame có tiếng nói; không sửa thêm thuật toán trước khi có bằng chứng mới.
+
+Ghi chú xác minh: Các số liệu trong tài liệu này lấy từ log người dùng/agent cung cấp; chưa được chạy độc lập trong môi trường tạo tài liệu.

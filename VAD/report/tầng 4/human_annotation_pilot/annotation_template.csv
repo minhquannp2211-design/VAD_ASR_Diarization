@@ -1,0 +1,12 @@
+excerpt_id,start_time_s,end_time_s,label,annotator_id,notes
+E01_stat20_16k,0.000,6.200,REPLACE_WITH_SPEECH_OR_NON_SPEECH_OR_UNCERTAIN,ANNOTATOR_1,"Split [0.000, 6.200) into contiguous half-open intervals [start_time_s, end_time_s) covering the full excerpt"
+E02_stat20_8k,0.000,6.000,REPLACE_WITH_SPEECH_OR_NON_SPEECH_OR_UNCERTAIN,ANNOTATOR_1,"Split [0.000, 6.000) into contiguous half-open intervals [start_time_s, end_time_s) covering the full excerpt"
+E03_stat15_16k,0.000,6.000,REPLACE_WITH_SPEECH_OR_NON_SPEECH_OR_UNCERTAIN,ANNOTATOR_1,"Split [0.000, 6.000) into contiguous half-open intervals [start_time_s, end_time_s) covering the full excerpt"
+E04_stat15_8k,0.000,5.700,REPLACE_WITH_SPEECH_OR_NON_SPEECH_OR_UNCERTAIN,ANNOTATOR_1,"Split [0.000, 5.700) into contiguous half-open intervals [start_time_s, end_time_s) covering the full excerpt"
+E05_stat10_16k,0.000,6.000,REPLACE_WITH_SPEECH_OR_NON_SPEECH_OR_UNCERTAIN,ANNOTATOR_1,"Split [0.000, 6.000) into contiguous half-open intervals [start_time_s, end_time_s) covering the full excerpt"
+E06_stat10_8k,0.000,7.300,REPLACE_WITH_SPEECH_OR_NON_SPEECH_OR_UNCERTAIN,ANNOTATOR_1,"Split [0.000, 7.300) into contiguous half-open intervals [start_time_s, end_time_s) covering the full excerpt"
+E07_step_up_16k,0.000,7.200,REPLACE_WITH_SPEECH_OR_NON_SPEECH_OR_UNCERTAIN,ANNOTATOR_1,"Split [0.000, 7.200) into contiguous half-open intervals [start_time_s, end_time_s) covering the full excerpt"
+E08_step_down_16k,0.000,6.500,REPLACE_WITH_SPEECH_OR_NON_SPEECH_OR_UNCERTAIN,ANNOTATOR_1,"Split [0.000, 6.500) into contiguous half-open intervals [start_time_s, end_time_s) covering the full excerpt"
+E09_step_up_8k,0.000,7.200,REPLACE_WITH_SPEECH_OR_NON_SPEECH_OR_UNCERTAIN,ANNOTATOR_1,"Split [0.000, 7.200) into contiguous half-open intervals [start_time_s, end_time_s) covering the full excerpt"
+E10_start_16k,0.000,5.500,REPLACE_WITH_SPEECH_OR_NON_SPEECH_OR_UNCERTAIN,ANNOTATOR_1,"Split [0.000, 5.500) into contiguous half-open intervals [start_time_s, end_time_s) covering the full excerpt"
+E11_start_8k,0.000,5.500,REPLACE_WITH_SPEECH_OR_NON_SPEECH_OR_UNCERTAIN,ANNOTATOR_1,"Split [0.000, 5.500) into contiguous half-open intervals [start_time_s, end_time_s) covering the full excerpt"

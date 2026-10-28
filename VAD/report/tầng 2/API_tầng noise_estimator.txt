@@ -1,0 +1,83 @@
+VAD/noise_estimator.py - TRA CỨU NHANH CÁC LỚP VÀ HÀM CHÍNH
+
+1. CẤU TRÚC DỮ LIỆU
+
+NoiseConfig (dataclass, frozen=True)
+- Chức năng: Cấu hình các tham số cho bộ ước lượng nền nhiễu thích nghi.
+- Các trường chính (giá trị mặc định là baseline từ test tổng hợp):
+  - init_frames: int = 40            (số frame warm-up tối đa = 200 ms @ hop 5 ms)
+  - alpha_fast: float = 0.15         (tốc độ EMA khi bằng chứng nhiễu mạnh)
+  - alpha_slow: float = 0.01         (tốc độ EMA khi bằng chứng nhiễu yếu hoặc phục hồi)
+  - snr_noise_db: float = 6.0        (dưới ngưỡng này: ứng viên nhiễu mạnh)
+  - snr_speech_db: float = 9.0       (từ ngưỡng này trở lên: tiếng nói hoặc vùng mơ hồ)
+  - strong_confirm_frames: int = 3   (số frame liên tiếp < snr_noise_db để mở cổng strong)
+  - sfm_thresh: float = 0.15          (ngưỡng SFM phân biệt phổ phẳng / có cấu trúc; baseline 0.15 phù hợp phổ nhiễu màu thực tế)
+  - max_freeze_frames: int = 500     (2.5 s @ 5 ms không xác nhận strong -> bật cờ stuck)
+  - recover_frames: int = 100        (điểm ổn định cần tích lũy sau khi stuck để phục hồi)
+  - recover_stable_db: float = 3.0   (biên độ lệch công suất dB coi là ổn định quanh _ref)
+  - recover_ref_alpha: float = 0.05  (hệ số EMA ngắn hạn của _ref khi stuck & phổ phẳng)
+  - snr_min_db: float = -10.0        (cận dưới clip SNR đầu ra)
+  - snr_max_db: float = 40.0         (cận trên clip SNR đầu ra)
+  - floor_min: float = 1e-10         (sàn công suất tối thiểu, đồng bộ _EPS của Tầng 1)
+- Phương thức:
+  - validate(): Kiểm tra tính hợp lệ của toàn bộ tham số cấu hình.
+
+NoiseOutput (dataclass, frozen=True)
+- Chức năng: Đóng gói kết quả ước lượng nền nhiễu và SNR cho chuỗi frame hiện tại.
+- Các trường:
+  - noise_floor: np.ndarray, shape (n_bands, T), dtype float32
+    Nền nhiễu ĐÃ DÙNG để tính snr_db tại frame t (công suất trung bình trên mỗi bin).
+  - snr_db: np.ndarray, shape (n_bands, T), dtype float32
+    SNR theo dB đã giới hạn trong [snr_min_db, snr_max_db]; bằng 0.0 khi warmup=True.
+  - update_mask: np.ndarray, shape (n_bands, T), dtype bool
+    Cho biết từng băng tại từng frame có được dùng để cập nhật noise floor hay không.
+  - stuck: np.ndarray, shape (n_bands, T), dtype bool
+    Cờ báo băng đã không được xác nhận strong quá max_freeze_frames.
+  - warmup: np.ndarray, shape (T,), dtype bool
+    True trong giai đoạn khởi tạo (tối đa init_frames frame đầu).
+  - is_noise: np.ndarray, shape (T,), dtype bool
+    Cờ chẩn đoán tổng hợp (= update_mask.all(axis=0)), không thay thế update_mask.
+- Thuộc tính:
+  - num_frames: trả về số frame T.
+
+2. LỚP NoiseEstimator
+
+NoiseEstimator(num_bands=4, config=None, debug=False)
+- Chức năng: Khởi tạo bộ ước lượng nền nhiễu stateful theo từng băng.
+
+update(features: VADFeatures) -> NoiseOutput
+- Đầu vào: Đối tượng VADFeatures từ Tầng 1 gồm band_power (n_bands, T) và sfm (T,).
+- Đầu ra: NoiseOutput.
+- Đặc tính:
+  - Stateful xuyên qua các chunk kích thước bất kỳ (chunk-invariant).
+  - Khi T = 0: trả về các mảng rỗng đúng shape (n_bands, 0) và (0,) cùng đúng dtype.
+  - Khi debug=True: kiểm tra NaN, Inf và giá trị âm trên đầu vào.
+
+reset() -> None
+- Chức năng: Xóa toàn bộ trạng thái nội bộ (warm-up buffer, noise_floor, bộ đếm strong/frozen/stable, _ref) để bắt đầu phiên âm thanh mới.
+
+noise_floor (property) -> np.ndarray
+- Chức năng: Trả về vector nền nhiễu hiện tại shape (n_bands,), dtype float32.
+
+is_ready (property) -> bool
+- Chức năng: Cho biết estimator đã hoàn tất giai đoạn warm-up (đủ init_frames) hay chưa.
+
+3. VÍ DỤ SỬ DỤNG KẾT HỢP TẦNG 1 & TẦNG 2
+
+    from VAD.feature_extraction import FeatureExtractor
+    from VAD.noise_estimator import NoiseEstimator
+
+    extractor = FeatureExtractor(sample_rate=16000)
+    estimator = NoiseEstimator(num_bands=extractor.num_bands)
+
+    features = extractor.process_chunk(audio_chunk)
+    noise_out = estimator.update(features)
+
+    snr_db = noise_out.snr_db          # (4, T) float32
+    warmup = noise_out.warmup          # (T,) bool
+
+4. GHI CHÚ HỢP ĐỒNG CHO TẦNG 3 - sigmoid.py
+
+- Tầng 3 tiêu thụ `noise_out.snr_db`, `noise_out.warmup` và `features.sfm`.
+- BẮT BUỘC xử lý riêng các frame có `noise_out.warmup[t] == True`: tại đó `snr_db[:, t] = 0.0` chỉ là giá trị giữ chỗ trong lúc học nền ban đầu, KHÔNG phải phép đo SNR = 0 dB thật.
+- Cần chuẩn hóa `snr_db` (đang trong [-10, 40] dB) về đoạn [0, 1] trước khi kết hợp tuyến tính với `1 - sfm` (vốn nằm trong [0, 1]).

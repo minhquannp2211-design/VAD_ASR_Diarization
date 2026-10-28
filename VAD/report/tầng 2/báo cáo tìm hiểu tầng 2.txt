@@ -1,0 +1,92 @@
+VAD/noise_estimator.py - BÁO CÁO THIẾT KẾ & KIỂM CHỨNG TẦNG 2 (ADAPTIVE NOISE ESTIMATION)
+
+1. VAI TRÒ TRONG KIẾN TRÚC MULTI-BAND ADAPTIVE SIGMOID VAD
+
+- Nhận trực tiếp `VADFeatures` từ Tầng 1 (`band_power` shape `(4, T)` và `sfm` shape `(T,)`).
+- Duy trì nền nhiễu (`noise_floor`) độc lập cho từng dải tần theo cùng định nghĩa công suất TRUNG BÌNH TRÊN MỖI BIN của Tầng 1.
+- Ước lượng tỷ số tín hiệu trên nhiễu theo từng băng (`snr_db` shape `(4, T)`) để chuyển giao cho Tầng 3 (`VAD/sigmoid.py`).
+
+2. THUẬT TOÁN & QUYẾT ĐỊNH THIẾT KẾ
+
+2.1. Khởi tạo (Warm-up)
+- Dùng `median` theo từng băng trên tối đa `init_frames = 40` frame đầu (200 ms @ hop 5 ms).
+- Trong suốt warm-up: trả `snr_db = 0.0` và `warmup = True`.
+- Hợp đồng chuyển giao sang Tầng 3: `snr_db = 0.0` trong giai đoạn `warmup = True` KHÔNG phải phép đo SNR thật; Tầng 3 bắt buộc xử lý cờ `warmup` riêng.
+- Nếu audio bắt đầu ngay bằng tiếng nói kéo dài hơn 200 ms, `median` ban đầu sẽ khởi tạo cao theo mức tiếng nói, nhưng không leo cao thêm và sẽ tụt nhanh về nền thật bằng `alpha_fast` ngay khi gặp khoảng lặng đầu tiên.
+
+2.2. Thứ tự tính toán theo thời gian
+- Tại mỗi frame `t`:
+  1) Ghi nhận `noise_floor[:, t] = self._floor` (nền nhiễu TRƯỚC khi cập nhật tại frame `t`).
+  2) Tính tỷ số tuyến tính `P / max(N, floor_min)`, đổi sang dB `10 * log10(...)` và clip vào `[snr_min_db, snr_max_db]` (`[-10, 40] dB`).
+  3) Đánh giá cổng cập nhật và cơ chế chống kẹt để cập nhật `self._floor` cho frame `t + 1`.
+
+2.3. Cổng cập nhật độc lập theo từng băng & EMA hai tốc độ theo độ tin cậy
+- `alpha_fast` (0.15) và `alpha_slow` (0.01) phản ánh mức độ tin cậy của bằng chứng nhiễu, không chọn theo dấu `(P - N)` để tránh lệch âm (downward bias) khi nhiễu dao động ngẫu nhiên.
+- Quy tắc phân loại từng băng `j` tại frame `t`:
+  - `snr_db < snr_noise_db` (6.0 dB) liên tiếp `>= strong_confirm_frames` (3 frame): bằng chứng NHIỄU MẠNH -> cập nhật `alpha_fast`.
+  - `snr_db < snr_noise_db` nhưng chưa đủ `strong_confirm_frames`: CHỜ XÁC NHẬN -> chưa cập nhật (không rơi sang `weak`).
+  - `snr_noise_db <= snr_db < snr_speech_db` (6.0..9.0 dB) VÀ `sfm > sfm_thresh` (0.15): bằng chứng NHIỄU YẾU -> cập nhật `alpha_slow`.
+  - `snr_db >= snr_noise_db` VÀ `sfm <= sfm_thresh`: có dấu hiệu TIẾNG NÓI (phổ có cấu trúc hài) -> đóng băng băng đó.
+  - `snr_db >= snr_speech_db` VÀ `sfm > sfm_thresh`: vùng MƠ HỒ (ví dụ phụ âm xát / âm vô thanh) -> không cập nhật.
+
+2.4. Cơ chế chống kẹt (`stuck` / `recover`)
+- Bộ đếm `frozen_count[j]` tăng khi băng `j` không cập nhật thường; giữ nguyên khi cập nhật `weak` và chỉ reset về `0` khi đã xác nhận `strong`.
+- Khi `frozen_count[j] > max_freeze_frames` (500 frame = 2.5 s) -> bật cờ `stuck[j, t] = True`.
+- Không tự động ép cập nhật sau 2.5 s để tránh noise floor leo theo tiếng nói liên tục.
+- Trước khi `stuck`, tham chiếu ngắn hạn `_ref` được neo bằng `noise_floor` (không chạy theo tín hiệu có SFM cao trước khi `stuck`).
+- Khi đã `stuck`: `_ref` bám theo công suất băng (`recover_ref_alpha = 0.05`). Bộ đếm ổn định `_stable` tăng 1 khi thỏa mãn đồng thời công suất lệch `<= 3 dB` quanh `_ref` VÀ `sfm > sfm_thresh` (0.15). Khi không thỏa mãn, `_stable` giảm 2 (thay vì xóa đột ngột về 0 trên toàn bộ băng) để chịu được dao động thống kê tự nhiên của nhiễu màu thực tế mà vẫn chặn được tiếng nói phân đoạn. Khi `_stable >= recover_frames` (100), cho phép phục hồi chậm bằng `alpha_slow`.
+
+3. PHÂN LOẠI MỨC ĐỘ BẰNG CHỨNG & GIỚI HẠN KỸ THUẬT
+
+[A] Đã xác minh bằng code và unit test (`tests/test_noise_estimator.py` - 23/23 test pass):
+- Hợp đồng đầu ra `NoiseOutput` đúng shape/dtype kể cả khi `T = 0`, bất biến với mọi kích thước chia chunk (`1, 7, 80, 1000`), `reset()` tái lập hoàn toàn.
+- Thứ tự `noise_floor[:, t]` khớp chính xác với `snr_db[:, t]` trước khi cập nhật.
+- Đóng băng độc lập theo từng băng khi tiếng nói chỉ xuất hiện ở một băng; các băng nhiễu còn lại vẫn cập nhật sau `strong_confirm_frames`.
+- Trước khi `stuck`, `_ref` không bị kéo theo tín hiệu công suất cao có SFM cao.
+
+[B] Kết quả mô phỏng tổng hợp (Synthetic Gamma & STFT noise + tone):
+- Trên mô phỏng phân phối Gamma độc lập với số bin `K = [3, 11, 16, 32]`:
+  - Ngưỡng `snr_noise_db = 6.0 dB` giữ sai số hội tụ nhiễu dừng ở băng 0 (3 bin) dưới 15% (so với mức lệch âm ~16.5% khi đặt 3.0 dB).
+  - `strong_confirm_frames = 3` ngăn hiện tượng các frame hõm công suất đơn lẻ ở băng 0 kích hoạt cập nhật tuyết lở trên mô phỏng tiếng nói +15 dB có `SFM = 0.1` (0 lần cập nhật trên 10 seed cố định `0..9`).
+  - Khi nhiễu nền tăng bậc +20 dB và giữ phẳng ổn định, cả 4 băng (bao gồm băng 0) phục hồi về mức nền mới trong 7.5 s trên nhiều seed.
+
+[C] Giới hạn lý thuyết & Trade-off kỹ thuật cần lưu ý:
+1. Tương quan giữa các frame STFT chồng lấn:
+   Preset VAD dùng cửa sổ `16 ms`, bước nhảy `5 ms` (chồng lấn `68.75%`). Do các frame liên tiếp dùng chung mẫu âm thanh, xác suất 3 frame liên tiếp cùng rơi vào hõm công suất trên STFT thực cao hơn nhiều so với công thức độc lập `p^3` của mô hình Gamma. Kiểm thử Gamma chỉ là regression test cho logic cổng, không thay thế đánh giá trên waveform thực.
+2. Trade-off ở cổng `strong` với SFM thấp:
+   Cổng `strong` không bị chặn bởi `sfm <= sfm_thresh` để đảm bảo khi 1 băng có tiếng nói thì các băng chỉ chứa nhiễu vẫn cập nhật được. Đổi lại, nếu một băng trong đoạn tiếng nói có `snr_db < 6.0 dB` kéo dài liên tục `>= strong_confirm_frames` frame, băng đó vẫn sẽ cập nhật nhanh.
+3. Giới hạn phân biệt của `stuck / recover` khi chỉ có `(band_power, sfm)`:
+   Một tín hiệu có `SFM > 0.5` và công suất giữ ổn định liên tục kéo dài vượt quá tổng thời gian đóng băng + hội tụ `_ref` + xác nhận phục hồi (~3.2 - 3.5 s) có đặc trưng giống hệt nhiễu nền dừng mức mới và sẽ kích hoạt phục hồi chậm.
+
+[D] Đánh giá trên benchmark ghép nguồn thực (FPT Open Speech Data) & Bàn giao phiên (Handover 2026-10-24):
+
+4. BÀN GIAO PHIÊN LÀM VIỆC (HANDOVER SUMMARY — CHƯA HOÀN TẤT TOÀN BỘ TẦNG 2)
+
+4.1. Thay đổi đã thực hiện
+- Trong `VAD/noise_estimator.py`:
+  1) Hạ `NoiseConfig.sfm_thresh` từ `0.5` xuống `0.15` để phù hợp với phổ nhiễu màu thực tế (SFM nhiễu thực đo được có trung vị ~0.19-0.21, trong khi tiếng nói sạch có trung vị ~0.022 và p90 ~0.11).
+  2) Thay lệnh xóa trắng toàn cục `if not flat: self._stable[:] = 0` bằng cơ chế tích lũy có suy hao: cộng 1 khi `flat & (dev_db <= recover_stable_db)` và trừ 2 (`max(_stable - 2, 0)`) khi không thỏa mãn, giữ cho `_stable` không bị xóa đột ngột bởi các frame nhiễu màu dao động ngắn hạn.
+- Trong `tests/test_noise_estimator.py`:
+  - Thêm test hồi quy `test_noise_step_up_recovers_on_colored_noise_with_realistic_sfm` (nhiễu màu SFM `[0.16, 0.32]` tăng bậc +17 dB).
+
+4.2. Kết quả kiểm thử và benchmark thực tế đạt được (seed=100, 16 kHz)
+- Unit test suite: `107/107 passed` (`23/23` trong `tests/test_noise_estimator.py`, `18/18` trong `tests/test_feature_extraction.py`, `66/66` trong `tests/test_stft.py`).
+- Khắc phục kẹt nền nhiễu ở kịch bản `step_up_down` (16 kHz):
+  - Tỷ lệ update Băng 0 trong đoạn nhiễu tăng bậc `[12.0s, 24.0s)` tăng từ `0.0%` lên `79.76%` (`81.98%` trên pure-noise frames).
+  - Trong cửa sổ cuối trước khi hạ bậc `[23.0s, 24.0s)` (loại trừ frame 24.0s): `noise_floor[0]` đạt tại 23.5s = `2.331712`, mean = `2.373470`, median = `2.331712` so với công suất nhiễu thực `P_n` median = `2.241875` (lệch median `+0.17 dB`; Med|Err| so với `P_n_smooth` = `1.53 dB`, Signed Med = `-0.90 dB`).
+  - Sai số tuyệt đối trung vị `noise_floor` toàn stream giảm từ `[4.45, 2.29, 2.30, 1.61] dB` xuống `[2.32, 1.93, 2.31, 1.66] dB`.
+  - Báo động giả thô (`raw_fa_pct`) trên `step_up_down` giảm từ `36.87%` xuống `18.27%` (khớp đoạn tăng từ `8/12` lên `11/12`); trên `speech_at_start` giảm từ `24.67%` xuống `7.24%`.
+  - Các kịch bản nhiễu dừng (`stationary_20db`, `15db`, `10db`): Med|Err| giữ ổn định (`[2.31, 2.10, 1.99, 1.60]`, `[2.32, 2.58, 1.38, 1.33]`, `[2.31, 1.97, 1.20, 1.07] dB`).
+
+4.3. Vấn đề tồn đọng: Tăng Miss Rate và rò rỉ cập nhật trong vùng có tiếng nói
+- Trên `step_up_down` (16 kHz), `raw_miss_pct` tăng từ `7.52%` (Baseline) lên `21.55%` (Candidate); riêng trong đoạn `[12.0s, 24.0s)` (+5 dB SNR), Miss Rate là `42.27%` (so với `1.52%` ở Baseline vốn do Băng 0 bị kẹt ở `-14.77 dB` dưới nền nhiễu thực làm `90.99%` pure-noise frames báo nhầm thành speech).
+- Kết quả phân rã nguyên nhân bằng thực nghiệm đối chứng chỉ ra CẢ HAI cơ chế cùng tác động:
+  1) Ngưỡng phát hiện thô hạ nguồn (`max_band SNR >= 9.0 dB`) đặt trên hỗn hợp SNR danh nghĩa `+5 dB` trong đoạn `12-24s`: ngay cả khi dùng nền nhiễu chuẩn lý tưởng `P_n_smooth`, Miss Rate toàn stream đã là `16.18%` (và trong `12-24s` là `41.55%`).
+  2) Nhiễm bẩn nền nhiễu từ tiếng nói qua nhánh `strong` (KHÔNG phải `recover`):
+     - `recover` kích hoạt `0` lần trên toàn stream.
+     - Sau khi một số ít frame `weak` (`1.87%` tổng số lần update trên `gt_band_speech[0]`) kéo nền Băng 0 qua vùng chuyển tiếp `6..9 dB`, nhánh `strong` (`snr_db < 6.0 dB` liên tiếp 3 frame, `alpha_fast = 0.15`, không bị chặn bởi SFM) chiếm tới `[98.13%, 92.50%, 98.62%, 98.49%]` tổng số lần update trên các frame mà chính băng đó đang có năng lượng lời nói sạch (`gt_band_speech[b]`).
+     - Riêng trong đoạn `12-24s`, nhánh `strong` cập nhật trên `[73.43%, 45.68%, 54.52%, 65.82%]` số frame `gt_band_speech[b]`, kéo `noise_floor` trong lúc nói dâng cao với độ lệch dương (Speech Bias so với `P_n_smooth`) là `[+2.99, +2.52, +0.33, +0.45] dB` (`[+2.56, +2.32, +2.06, +2.31] dB` toàn stream). Độ dâng nền này làm mất thêm `+5.37%` Miss Rate so với nền chuẩn `P_n_smooth` (và `+10.55%` so với bộ ước lượng chạy trên nhiễu thuần `n_wave` có Miss Rate `11.00%`).
+
+4.4. Nhiệm vụ chẩn đoán tiếp theo (Next Diagnostic Task)
+- Khảo sát và kiểm nghiệm cơ chế kìm hãm rò rỉ cập nhật nhánh `strong` trong vùng đang có tiếng nói (ví dụ: kiểm tra điều kiện chặn hoặc giảm tốc độ kéo nền lên của `strong` khi SFM toàn frame rất thấp / có băng khác đạt SNR tiếng nói rõ rệt, hoặc tách tốc độ cập nhật lên/xuống khi chưa xác nhận khoảng lặng), đo trực tiếp mức giảm tỷ lệ cập nhật trên `gt_band_speech[b]` và `Speech Bias dB` trên `step_up_down` và `stationary_15db`/`10db` mà không làm mất khả năng phục hồi khi nhiễu tăng bậc.
+
